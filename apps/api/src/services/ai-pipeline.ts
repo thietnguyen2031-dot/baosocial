@@ -54,9 +54,9 @@ export async function processNewArticle(articleId: number) {
             try {
                 const seo = await generateSEOSuggestions(article.title, newContent, keys);
                 seoUpdate = {
-                    seoTitle: seo.title,
-                    seoDescription: seo.description,
-                    focusKeyword: seo.keywords,
+                    seoTitle: seo.suggestedTitle,
+                    seoDescription: seo.metaDescription,
+                    focusKeyword: '', // Not returned by new AI prompt, leave blank or add to prompt later
                     slug: seo.slug // Auto-update slug? Maybe risky if external links rely on it? 
                     // But for new articles it is fine.
                     // The crawler sync logic sets a timestamp-based slug initially.

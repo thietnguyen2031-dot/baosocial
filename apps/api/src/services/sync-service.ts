@@ -1,38 +1,24 @@
-import { db } from "../index"; // Ensure this imports the db instance correctly 
-// OR simpler: re-instantiate db here if index.ts doesn't export it cleanly for internal use without circular deps
-// Actually index.ts exports `db`. 
-// But importing `db` from index.ts might cause side effects (running the server code).
-// standard practice: move `db` to `db.ts` or `database.ts` or rely on `@packages/db`.
-// Let's use `@packages/db` directly.
-
 import { db, rssFeeds, articles } from "@packages/db";
-import { fetchFeed } from "./crawler"; // Assuming crawler logic is accessible
-import * as crawler from "../crawler"; // Need to verify where crawler is
-import { slugify } from "./utils"; // Verify utils existence or use lib
-// Wait, `crawler` is imported in index.ts as `import * as crawler from "./crawler";`
-// Let's check where `crawler.ts` is. 
-
-type CrawlerModule = typeof import("../crawler");
 
 export async function syncAllFeeds() {
     console.log("🔄 [SyncService] Syncing all feeds...");
     try {
         const feeds = await db.select().from(rssFeeds);
 
-        // Dynamic import to avoid circular dependency issues if any
-        const crawler = await import("../crawler");
+        // Dynamic import to avoid circular dependency issues
+        const crawler = await import("@packages/crawler");
 
         let totalNew = 0;
 
         for (const feed of feeds) {
-            console.log(`📡 [SyncService] Fetching feed: ${feed.name}`);
+            console.log(`📡 [SyncService] Fetching feed: ${feed.source}`);
             try {
                 const items = await crawler.fetchFeed(feed.url);
 
                 for (const item of items) {
                     // Check duplicate
                     const existing = await db.query.articles.findFirst({
-                        where: (a, { eq }) => eq(a.sourceUrl, item.link)
+                        where: (a: any, { eq }: any) => eq(a.sourceUrl, item.link)
                     });
 
                     if (existing) continue;
@@ -41,20 +27,22 @@ export async function syncAllFeeds() {
                     const baseSlug = item.title ? slugifyStr(item.title) : "untitled";
                     const uniqueSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
 
-                    // Fetch content
-                    const { content: fullContent, title: scrapedTitle, description: scrapedDesc, thumbnail: scrapedThumbnail } = await crawler.fetchContent(item.link, {
+                    // Fetch content - cast to include thumbnail field
+                    const contentResult = await crawler.fetchContent(item.link, {
                         contentSelector: feed.contentSelector,
                         excludeSelector: feed.excludeSelector,
                         titleSelector: feed.titleSelector,
                         descriptionSelector: feed.descriptionSelector
-                    });
+                    }) as { content: string; title?: string; description?: string; thumbnail?: string };
+
+                    const { content: fullContent, title: scrapedTitle, description: scrapedDesc, thumbnail: scrapedThumbnail } = contentResult;
 
                     const newArticle = await db.insert(articles).values({
                         title: scrapedTitle || item.title || "Untitled",
                         slug: uniqueSlug,
-                        summary: scrapedDesc || item.contentSnippet || "",
+                        summary: scrapedDesc || (item as any).contentSnippet || "",
                         contentAi: fullContent,
-                        thumbnail: item.thumbnail || scrapedThumbnail || null,
+                        thumbnail: (item as any).thumbnail || scrapedThumbnail || null,
                         category: feed.category,
                         publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
                         status: "PENDING" // Wait for AI & Telegram Approval
@@ -71,7 +59,7 @@ export async function syncAllFeeds() {
                     totalNew++;
                 }
             } catch (e) {
-                console.error(`❌ [SyncService] Error fetching feed ${feed.name}:`, e);
+                console.error(`❌ [SyncService] Error fetching feed ${feed.source}:`, e);
             }
         }
 
