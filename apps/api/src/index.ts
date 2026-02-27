@@ -1,0 +1,1055 @@
+console.log("🚀 Starting API...");
+import "./setup-env"; // Must be first
+import express from "express";
+import cors from "cors";
+import cron from "node-cron";
+import { RSSCrawler } from "@packages/crawler";
+
+const app = express();
+const port = process.env.PORT || 3001;
+const crawler = new RSSCrawler();
+
+app.use(cors());
+app.use(express.json());
+
+// Initialize Telegram Bot
+import { initTelegramBot } from "./services/telegram-bot";
+initTelegramBot().catch(e => console.error("Failed to init Telegram Bot:", e));
+
+app.get("/health", (req, res) => {
+  res.send("OK");
+});
+
+import { db, rssFeeds, articles } from "@packages/db";
+import { eq, desc, count, isNull, asc } from "drizzle-orm";
+
+// ADMIN STATS ENDPOINT
+app.get("/admin/stats", async (req, res) => {
+  try {
+    const totalArticles = await db.select({ value: count() }).from(articles);
+    const pendingArticles = await db.select({ value: count() }).from(articles).where(eq(articles.status, "PENDING"));
+    const activeFeeds = await db.select({ value: count() }).from(rssFeeds).where(eq(rssFeeds.isActive, true));
+
+    res.json({
+      totalArticles: totalArticles[0].value,
+      pendingArticles: pendingArticles[0].value,
+      activeFeeds: activeFeeds[0].value,
+      visitors: 12500 // Mock for now as we don't track analytics yet
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Stats error" });
+  }
+});
+
+app.get("/rss-feeds", async (req, res) => {
+  try {
+    const feeds = await db.select().from(rssFeeds);
+    res.json(feeds);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch feeds" });
+  }
+});
+
+app.post("/rss-feeds", async (req, res) => {
+  try {
+    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo } = req.body;
+    if (!url || !source || !category) return res.status(400).json({ error: "Missing fields" });
+
+    const newFeed = await db.insert(rssFeeds).values({
+      url,
+      source,
+      category,
+      contentSelector: contentSelector || null,
+      excludeSelector: excludeSelector || null,
+      titleSelector: titleSelector || null,
+      descriptionSelector: descriptionSelector || null,
+      autoSeo: autoSeo || false
+    }).returning();
+    res.json(newFeed[0]);
+  } catch (error: any) {
+    console.error("❌ [API] POST /rss-feeds Error:", error);
+    res.status(500).json({
+      error: error.message || "Failed to add feed",
+      details: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    });
+  }
+});
+
+app.delete("/rss-feeds/:id", async (req, res) => {
+  try {
+    await db.delete(rssFeeds).where(eq(rssFeeds.id, Number(req.params.id)));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete feed" });
+  }
+});
+
+app.put("/rss-feeds/:id", async (req, res) => {
+  try {
+    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo } = req.body;
+    if (!url || !source || !category) return res.status(400).json({ error: "Missing fields" });
+
+    // Update the feed
+    await db.update(rssFeeds)
+      .set({
+        url,
+        source,
+        category,
+        contentSelector: contentSelector || null,
+        excludeSelector: excludeSelector || null,
+        titleSelector: titleSelector || null,
+        descriptionSelector: descriptionSelector || null,
+        autoSeo: autoSeo || false
+      })
+      .where(eq(rssFeeds.id, Number(req.params.id)));
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("❌ [API] PUT /rss-feeds Error:", error);
+    res.status(500).json({
+      error: error.message || "Failed to update feed",
+      details: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    });
+  }
+});
+
+// Helper: Simple Slugify
+function slugify(text: string) {
+  return text.toString().toLowerCase()
+    .replace(/\s+/g, '-')           // Replace spaces with -
+    .replace(/[^\w\-]+/g, '')       // Remove all non-word chars
+    .replace(/\-\-+/g, '-')         // Replace multiple - with single -
+    .replace(/^-+/, '')             // Trim - from start of text
+    .replace(/-+$/, '');            // Trim - from end of text
+}
+
+// ... existing RSS endpoints ...
+
+// DELETE articles by category (for testing)
+// DELETE articles by category (for testing)
+app.delete("/articles/category/:category", async (req, res) => {
+  try {
+    await db.delete(articles).where(eq(articles.category, req.params.category));
+    res.json({ success: true, message: `Deleted articles in category: ${req.params.category}` });
+  } catch (error: any) {
+    console.error("❌ [API] DELETE /articles Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SYNC SERVICE: Fetch RSS and Save to DB
+app.post("/sync-news", async (req, res) => {
+  try {
+    const activeFeeds = await db.query.rssFeeds.findMany({ where: (f, { eq }) => eq(f.isActive, true) });
+
+    // Stats tracking
+    let newCount = 0;
+    let aiSuccessCount = 0;
+    let aiFailCount = 0;
+    const debugLogs: string[] = [];
+    const log = (msg: string) => { console.log(msg); debugLogs.push(msg); };
+
+    // Check Telegram Approval Mode
+    const telegramSetting = await db.query.systemSettings.findFirst({
+      where: (s, { eq }) => eq(s.key, "telegram_approval_enabled")
+    });
+    const isTelegramApproval = telegramSetting?.value === "true";
+
+    log(`[Sync] 🔧 Mode: ${isTelegramApproval ? 'Telegram Approval' : 'Auto-Publish'}`);
+    log(`[Sync] Found ${activeFeeds.length} active feeds.`);
+
+    for (const feed of activeFeeds) {
+      log(`[Sync] Fetching feed: ${feed.url}`);
+      const items = await crawler.fetchFeed(feed.url, feed.source);
+      log(`[Sync] Feed fetched. Items: ${items.length}`);
+
+      for (const item of items) {
+        // Check if exists by Source URL (avoid duplicates)
+        const existing = await db.query.articles.findFirst({
+          where: (a, { eq }) => eq(a.sourceUrl, item.link)
+        });
+
+        if (existing) {
+          log(`[Sync] ⏭️ Skipping duplicate: ${item.link}`);
+          continue;
+        }
+
+        // Generate unique slug
+        const baseSlug = slugify(item.title);
+        const uniqueSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
+
+        log(`[Sync] 🌐 Scraping content: ${item.link}`);
+
+        // Fetch full content
+        const { content: fullContent, title: scrapedTitle, description: scrapedDesc, thumbnail: scrapedThumbnail } = await crawler.fetchContent(item.link, {
+          contentSelector: feed.contentSelector,
+          excludeSelector: feed.excludeSelector,
+          titleSelector: feed.titleSelector,
+          descriptionSelector: feed.descriptionSelector
+        });
+
+        // Check Auto SEO Setting (Per Feed)
+        const isAutoSeo = feed.autoSeo === true;
+
+        let finalTitle = scrapedTitle || item.title || "Untitled";
+        let finalDesc = scrapedDesc || item.contentSnippet || "";
+        let finalContent = fullContent;
+        let finalSeoTitle = "";
+        let finalSeoDesc = "";
+        let finalSlug = uniqueSlug;
+        let aiSuccess = false;
+
+        if (isAutoSeo && fullContent && fullContent.length > 200) {
+          try {
+            // Fetch API Keys
+            const keySetting = await db.query.systemSettings.findFirst({ where: (s, { eq }) => eq(s.key, "gemini_api_keys") });
+            let keys: string[] = [];
+            if (keySetting && keySetting.value) {
+              keys = keySetting.value.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
+            }
+
+            if (keys.length > 0) {
+              log(`[Sync] 🤖 Running Auto SEO for: ${finalTitle.substring(0, 50)}...`);
+              // CRITICAL DEBUG: Log the keys before passing to AI
+              log(`[Sync] 🔑 DEBUG: Fetched ${keys.length} keys from database`);
+              keys.forEach((k, idx) => {
+                log(`[Sync] 🔑 Key ${idx + 1}: ...${k.slice(-8)} (length: ${k.length})`);
+              });
+              const { generateSEOSuggestions } = await import("@packages/ai");
+              const seoData = await generateSEOSuggestions(finalTitle, fullContent, keys);
+
+              finalTitle = seoData.suggestedTitle;
+              finalDesc = seoData.metaDescription;
+              finalContent = seoData.rewrittenContent;
+              finalSlug = seoData.slug;
+              finalSeoTitle = seoData.suggestedTitle;
+              finalSeoDesc = seoData.metaDescription;
+              aiSuccess = true;
+              aiSuccessCount++;
+              log(`[Sync] ✅ AI Rewrite SUCCESS`);
+            } else {
+              log(`[Sync] ⚠️ No API keys configured`);
+              aiFailCount++;
+            }
+          } catch (err) {
+            log(`[Sync] ❌ AI Rewrite FAILED: ${err}`);
+            aiFailCount++;
+          }
+        }
+
+        // Determine status based on Telegram Approval Mode
+        let articleStatus = "PENDING";
+        if (!isTelegramApproval) {
+          // Auto-publish mode: Only publish if AI rewrite was successful
+          articleStatus = aiSuccess ? "PUBLISHED" : "PENDING";
+        }
+        // If Telegram mode is ON, everything stays PENDING
+
+        await db.insert(articles).values({
+          title: finalTitle,
+          slug: finalSlug,
+          summary: finalDesc,
+          contentAi: finalContent,
+          seoTitle: finalSeoTitle,
+          seoDescription: finalSeoDesc,
+          thumbnail: item.thumbnail || scrapedThumbnail || null,
+          sourceUrl: item.link,
+          category: feed.category,
+          publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
+          status: articleStatus,
+        });
+        newCount++;
+        log(`[Sync] 💾 Saved: ${finalTitle.substring(0, 50)}... [${articleStatus}]`);
+      }
+    }
+
+    // Final summary
+    log(`\n📊 ========== SYNC COMPLETE ==========`);
+    log(`📰 Total new articles: ${newCount}`);
+    if (aiSuccessCount > 0 || aiFailCount > 0) {
+      log(`✅ AI Success: ${aiSuccessCount}`);
+      log(`❌ AI Failed: ${aiFailCount}`);
+    }
+    log(`🔧 Mode: ${isTelegramApproval ? 'Telegram Approval (All PENDING)' : 'Auto-Publish (Success→PUBLISHED, Fail→PENDING)'}`);
+    log(`=====================================`);
+
+    res.json({
+      success: true,
+      message: `Synced ${newCount} new articles.`,
+      debugLogs,
+      stats: {
+        total: newCount,
+        aiSuccess: aiSuccessCount,
+        aiFail: aiFailCount,
+        mode: isTelegramApproval ? 'telegram' : 'auto'
+      }
+    });
+  } catch (error) {
+    console.error("Sync Error:", error);
+    res.status(500).json({ error: "Failed to sync news" });
+  }
+});
+
+
+// CRAWLER ENDPOINTS
+
+// GET /crawler/preview - Proxy to fetch raw HTML for visual selector
+app.get("/crawler/preview", async (req, res) => {
+  try {
+    const url = req.query.url as string;
+    if (!url) {
+      return res.status(400).json({ error: "Missing URL" });
+    }
+
+    // validate URL
+    try {
+      new URL(url);
+    } catch {
+      return res.status(400).json({ error: "Invalid URL" });
+    }
+
+    console.log(`Proxy fetching: ${url}`);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Failed to fetch: ${response.statusText}` });
+    }
+
+    const html = await response.text();
+
+    // Inject <base> tag so relative links work
+    const baseUrl = new URL(url).origin;
+    const injectedHtml = html.replace('<head>', `<head><base href="${baseUrl}/" />`);
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(injectedHtml);
+  } catch (error) {
+    console.error("Preview Error:", error);
+    res.status(500).json({ error: "Failed to fetch preview" });
+  }
+});
+
+// GET /crawler/feed-preview - Parse RSS to get sample links
+app.get("/crawler/feed-preview", async (req, res) => {
+  try {
+    const url = req.query.url as string;
+    if (!url) return res.status(400).json({ error: "Missing URL" });
+
+    // Reuse crawler package to fetch feed
+    const items = await crawler.fetchFeed(url, "");
+
+    // Return top 5 items for selection
+    res.json(items.slice(0, 5).map(item => ({
+      title: item.title,
+      link: item.link,
+      date: item.pubDate
+    })));
+  } catch (error) {
+    console.error("Feed Preview Error:", error);
+    res.status(500).json({ error: "Failed to parse feed" });
+  }
+});
+
+
+// ARTICLE MANAGEMENT ENDPOINTS
+
+// GET /articles - List with filters
+app.get("/articles", async (req, res) => {
+  try {
+    // Simple fetch all sorted by date
+    // Default: only show PUBLISHED articles (for public homepage)
+    // Admin can override with ?status=all or ?status=draft
+    const statusQuery = req.query.status as string;
+
+    const allArticles = await db.select().from(articles).orderBy(desc(articles.publishedAt));
+
+    // Filter by status
+    let filtered;
+    if (statusQuery === 'all') {
+      // Admin: show all
+      filtered = allArticles;
+    } else if (statusQuery) {
+      // Specific status (draft, published, etc)
+      filtered = allArticles.filter(a => a.status === statusQuery);
+    } else {
+      // Default: published OR null (legacy articles from RSS without status)
+      filtered = allArticles.filter(a => a.status === 'PUBLISHED' || a.status === null);
+    }
+
+    res.json(filtered);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch articles" });
+  }
+});
+
+// GET /articles/:id
+app.get("/articles/:id", async (req, res) => {
+  try {
+    const article = await db.query.articles.findFirst({
+      where: (a, { eq }) => eq(a.id, Number(req.params.id))
+    });
+    if (!article) return res.status(404).json({ error: "Not found" });
+    res.json(article);
+  } catch (error) {
+    res.status(500).json({ error: "Fetch error" });
+  }
+});
+
+// PATCH /articles/:id
+app.patch("/articles/:id", async (req, res) => {
+  try {
+    const { title, slug, summary, contentAi, status, seoTitle, seoDescription, focusKeyword } = req.body;
+
+    await db.update(articles)
+      .set({
+        title, slug, summary, contentAi, status, seoTitle, seoDescription, focusKeyword
+      })
+      .where(eq(articles.id, Number(req.params.id)));
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Update error" });
+  }
+});
+
+// DELETE /articles/:id
+app.delete("/articles/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    console.log(`[API] Deleting article ID: ${id}`);
+
+    // Delete related data first (Manual Cascade)
+    await db.delete(favorites).where(eq(favorites.articleId, id));
+    await db.delete(comments).where(eq(comments.articleId, id));
+
+    // Delete article
+    const deleted = await db.delete(articles).where(eq(articles.id, id)).returning();
+    console.log(`[API] Deleted count: ${deleted.length}`);
+
+    if (deleted.length === 0) {
+      console.log(`[API] Article ID ${id} not found or not deleted.`);
+      // We still return success: true to prompt UI to refresh, but maybe we should warn?
+      // Actually if it's already gone, it's success.
+    }
+
+    res.json({ success: true, deleted: deleted.length });
+  } catch (error) {
+    console.error("Delete article error:", error);
+    res.status(500).json({ error: "Delete error" });
+  }
+});
+
+// GET /news (For Frontend)
+app.get("/news", async (req, res) => {
+  try {
+    // 1. Try fetching PUBLISHED articles from DB first
+    const published = await db.query.articles.findMany({
+      where: (a, { eq }) => eq(a.status, "PUBLISHED"),
+      orderBy: desc(articles.publishedAt),
+      limit: 50
+    });
+
+    // 2. Return data (empty if none)
+    // Removed Live Crawl Fallback to enforce 'PENDING' -> 'PUBLISHED' workflow
+
+    if (published.length > 0) {
+      const mapped = published.map(a => ({
+        id: a.id,            // Use 'id' directly for clarity
+        guid: a.id,
+        title: a.title,
+        link: a.sourceUrl,   // Keep sourceUrl for reference if needed
+        pubDate: a.publishedAt,
+        contentSnippet: a.summary,
+        category: a.category,
+        source: 'BaoSocial',
+        thumbnail: a.thumbnail || ''
+      }));
+      return res.json({ success: true, count: mapped.length, data: mapped });
+    }
+
+    // No published articles found
+    res.json({ success: true, count: 0, data: [] });
+
+  } catch (error) {
+    console.error("Error fetching news:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch news" });
+  }
+});
+
+// AI REWRITE ENDPOINT
+import { rewriteContent } from "@packages/ai";
+
+app.post("/ai/rewrite", async (req, res) => {
+  const { content } = req.body;
+  if (!content) return res.status(400).json({ error: "Missing content" });
+
+  try {
+    // Fetch API Keys from DB
+    const keySetting = await db.query.systemSettings.findFirst({
+      where: (s, { eq }) => eq(s.key, "gemini_api_keys")
+    });
+
+    console.log(`🔍 [DEBUG] Raw DB value:`, keySetting?.value);
+
+    let keys: string[] = [];
+    if (keySetting && keySetting.value) {
+      // Split by newline or comma
+      keys = keySetting.value.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
+    }
+
+    console.log(`🔍 [DEBUG] Parsed ${keys.length} keys:`, keys.map(k => `...${k.slice(-8)}`));
+
+    if (keys.length === 0) {
+      return res.status(400).json({ error: "Vui lòng cấu hình Gemini API Key trong phần Cài đặt (Settings)." });
+    }
+
+    console.log(`✍️ [AI] Rewriting content with ${keys.length} keys...`);
+    const rewritten = await rewriteContent(content, keys);
+    res.json({ content: rewritten });
+  } catch (error: any) {
+    console.error("❌ [AI] Error:", error.message);
+    if (error.message.includes("API keys")) {
+      return res.status(400).json({ error: "API Key không hợp lệ. Vui lòng kiểm tra lại cấu hình." });
+    }
+    res.status(500).json({ error: "Lỗi AI: " + error.message });
+  }
+});
+
+// AI SEO SUGGESTIONS ENDPOINT
+app.post("/ai/seo-suggestions", async (req, res) => {
+  const { title, content } = req.body;
+  if (!title || !content) {
+    return res.status(400).json({ error: "Missing title or content" });
+  }
+
+  try {
+    // Fetch API Keys from DB
+    const keySetting = await db.query.systemSettings.findFirst({
+      where: (s, { eq }) => eq(s.key, "gemini_api_keys")
+    });
+
+    let keys: string[] = [];
+    if (keySetting && keySetting.value) {
+      keys = keySetting.value.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
+    }
+
+    console.log(`🎯 [AI SEO] Generating suggestions with ${keys.length} keys...`);
+
+    if (keys.length === 0) {
+      return res.status(400).json({ error: "Vui lòng cấu hình Gemini API Key trong phần Cài đặt (Settings)." });
+    }
+
+    const { generateSEOSuggestions } = await import("@packages/ai");
+    const suggestions = await generateSEOSuggestions(title, content, keys);
+
+    res.json(suggestions);
+  } catch (error: any) {
+    console.error("❌ [AI SEO] Error:", error.message);
+    res.status(500).json({ error: "Lỗi AI SEO: " + error.message });
+  }
+});
+
+// BULK AUTO SEO ENDPOINT
+app.post("/ai/bulk-seo", async (req, res) => {
+  const { articleIds } = req.body;
+  if (!Array.isArray(articleIds) || articleIds.length === 0) {
+    return res.status(400).json({ error: "Missing or invalid articleIds" });
+  }
+
+  try {
+    // 1. Fetch Setting: Telegram Approval Mode (determines auto-publish)
+    const telegramSetting = await db.query.systemSettings.findFirst({
+      where: (s, { eq }) => eq(s.key, "telegram_approval_enabled")
+    });
+    const isTelegramApproval = telegramSetting?.value === "true";
+
+    // 2. Fetch API Keys
+    const keySetting = await db.query.systemSettings.findFirst({
+      where: (s, { eq }) => eq(s.key, "gemini_api_keys")
+    });
+    let keys: string[] = [];
+    if (keySetting && keySetting.value) {
+      keys = keySetting.value.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
+    }
+    if (keys.length === 0) {
+      return res.status(400).json({ error: "Vui lòng cấu hình Gemini API Key trước khi dùng Auto SEO." });
+    }
+
+    const { generateSEOSuggestions } = await import("@packages/ai");
+
+    let successCount = 0;
+    let failCount = 0;
+    let logs: string[] = [];
+
+    // Process sequentially
+    for (const id of articleIds) {
+      const article = await db.query.articles.findFirst({
+        where: (a, { eq }) => eq(a.id, Number(id))
+      });
+
+      if (!article) {
+        logs.push(`⚠️ ID ${id}: Không tìm thấy bài viết.`);
+        failCount++;
+        continue;
+      }
+
+      if (article.status === 'PUBLISHED') {
+        logs.push(`⏭️ ID ${id}: Đã xuất bản, bỏ qua.`);
+        failCount++;
+        continue;
+      }
+
+      const rawContent = article.contentAi || "";
+      if (rawContent.length < 50) {
+        logs.push(`⚠️ ID ${id}: Bài viết quá ngắn, bỏ qua.`);
+        failCount++;
+        continue;
+      }
+
+      try {
+        logs.push(`🔄 Đang xử lý: ${article.title.substring(0, 40)}...`);
+        const seoData = await generateSEOSuggestions(article.title, rawContent, keys);
+
+        // Auto Publish Logic
+        const newStatus = isTelegramApproval ? 'PENDING' : 'PUBLISHED';
+
+        await db.update(articles)
+          .set({
+            title: seoData.suggestedTitle,
+            slug: seoData.slug,
+            summary: seoData.metaDescription,
+            contentAi: seoData.rewrittenContent,
+            seoTitle: seoData.suggestedTitle,
+            seoDescription: seoData.metaDescription,
+            status: newStatus
+          })
+          .where(eq(articles.id, article.id));
+
+        logs.push(`✅ Thành công: ${seoData.suggestedTitle.substring(0, 40)}...`);
+        successCount++;
+      } catch (err: any) {
+        logs.push(`❌ Lỗi bài ${id}: ${err.message}`);
+        failCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Đã xử lý xong. Thành công: ${successCount}, Thất bại: ${failCount}`,
+      stats: { success: successCount, fail: failCount },
+      logs
+    });
+  } catch (error: any) {
+    console.error("❌ [AI Bulk SEO] Error:", error.message);
+    res.status(500).json({ error: "Lỗi Bulk SEO: " + error.message });
+  }
+});
+// COMMENTS ENDPOINTS
+import { comments, users } from "@packages/db";
+
+// GET Comments for an Article
+app.get("/comments", async (req, res) => {
+  try {
+    const articleId = Number(req.query.articleId);
+    if (!articleId) return res.status(400).json({ error: "Missing articleId" });
+
+    const result = await db.select({
+      id: comments.id,
+      content: comments.content,
+      parentId: comments.parentId,
+      createdAt: comments.createdAt,
+      user: {
+        id: users.id,
+        name: users.name,
+        avatar: users.avatar
+      }
+    })
+      .from(comments)
+      .leftJoin(users, eq(comments.userId, users.id))
+      .where(eq(comments.articleId, articleId))
+      .orderBy(desc(comments.createdAt));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Get Comments Error:", error);
+    res.status(500).json({ error: "Failed to fetch comments" });
+  }
+});
+
+// POST Comment
+app.post("/comments", async (req, res) => {
+  try {
+    const { userId, articleId, content, parentId } = req.body;
+    if (!userId || !articleId || !content) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    const newComment = await db.insert(comments).values({
+      userId,
+      articleId,
+      content,
+      parentId: parentId || null
+    }).returning();
+
+    res.json(newComment[0]);
+  } catch (error) {
+    console.error("Post Comment Error:", error);
+    res.status(500).json({ error: "Failed to post comment" });
+  }
+});
+
+// FAVORITES ENDPOINTS
+import { favorites } from "@packages/db";
+import { and } from "drizzle-orm";
+
+// GET User Favorites
+app.get("/favorites", async (req, res) => {
+  try {
+    const userId = Number(req.query.userId);
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    const result = await db.select({
+      id: favorites.id,
+      articleId: favorites.articleId,
+      createdAt: favorites.createdAt,
+      article: {
+        title: articles.title,
+        slug: articles.slug,
+        thumbnail: articles.thumbnail,
+        summary: articles.summary
+      }
+    })
+      .from(favorites)
+      .leftJoin(articles, eq(favorites.articleId, articles.id))
+      .where(eq(favorites.userId, userId))
+      .orderBy(desc(favorites.createdAt));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Get Favorites Error:", error);
+    res.status(500).json({ error: "Failed to fetch favorites" });
+  }
+});
+
+// CHECK if article is favorited
+app.get("/favorites/check", async (req, res) => {
+  try {
+    const userId = Number(req.query.userId);
+    const articleId = Number(req.query.articleId);
+    if (!userId || !articleId) return res.status(400).json({ error: "Missing fields" });
+
+    const existing = await db.query.favorites.findFirst({
+      where: (f, { eq, and }) => and(eq(f.userId, userId), eq(f.articleId, articleId))
+    });
+
+    res.json({ isFavorited: !!existing });
+  } catch (error) {
+    res.status(500).json({ error: "Check failed" });
+  }
+});
+
+// POST Toggle Favorite (Save/Unsave logic can be here or separate)
+// Let's do explicit Save and Delete
+app.post("/favorites", async (req, res) => {
+  try {
+    const { userId, articleId } = req.body;
+    if (!userId || !articleId) return res.status(400).json({ error: "Missing fields" });
+
+    // Check duplicate
+    const existing = await db.query.favorites.findFirst({
+      where: (f, { eq, and }) => and(eq(f.userId, userId), eq(f.articleId, articleId))
+    });
+
+    if (existing) return res.status(400).json({ error: "Already saved" });
+
+    await db.insert(favorites).values({ userId, articleId });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Save Favorite Error:", error);
+    res.status(500).json({ error: "Failed to save" });
+  }
+});
+
+// DELETE Favorite
+app.delete("/favorites", async (req, res) => {
+  try {
+    const { userId, articleId } = req.body;
+    if (!userId || !articleId) return res.status(400).json({ error: "Missing fields" });
+
+    await db.delete(favorites)
+      .where(and(eq(favorites.userId, userId), eq(favorites.articleId, articleId)));
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to remove" });
+  }
+});
+
+// SYSTEM SETTINGS ENDPOINTS
+import { systemSettings } from "@packages/db";
+
+// CATEGORY MANAGEMENT ENDPOINTS (Before Settings)
+import { categories } from "@packages/db";
+
+app.get("/categories", async (req, res) => {
+  try {
+    const isHeaderOnly = req.query.header === 'true';
+    let query = db.select().from(categories);
+
+    if (isHeaderOnly) {
+      query = query.where(eq(categories.showOnHeader, true)) as any;
+    }
+
+    const list = await query.orderBy(asc(categories.listOrder), desc(categories.createdAt));
+    res.json(list);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch categories" });
+  }
+});
+
+app.post("/categories", async (req, res) => {
+  try {
+    const { name, slug, description, showOnHeader } = req.body;
+    if (!name || !slug) return res.status(400).json({ error: "Name and Slug are required" });
+
+    const newCat = await db.insert(categories).values({
+      name,
+      slug: slugify(slug), // Ensure slug format
+      description,
+      showOnHeader: !!showOnHeader
+    }).returning();
+    res.json(newCat[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to create category" });
+  }
+});
+
+app.post("/categories/reorder", async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ error: "Invalid payload format" });
+
+    await Promise.all(
+      items.map(async (item: any) => {
+        if (item.id !== undefined && item.listOrder !== undefined) {
+          await db.update(categories)
+            .set({ listOrder: item.listOrder })
+            .where(eq(categories.id, item.id));
+        }
+      })
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to reorder categories" });
+  }
+});
+
+app.patch("/categories/:id", async (req, res) => {
+  try {
+    const { showOnHeader } = req.body;
+    await db.update(categories)
+      .set({ showOnHeader })
+      .where(eq(categories.id, Number(req.params.id)));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update category" });
+  }
+});
+
+app.delete("/categories/:id", async (req, res) => {
+  try {
+    await db.delete(categories).where(eq(categories.id, Number(req.params.id)));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete category" });
+  }
+});
+
+app.get("/settings", async (req, res) => {
+  try {
+    const settings = await db.select().from(systemSettings);
+    // Convert array to object { key: value } for easier FE consumption? 
+    // Or return array. Let's return array for now to keep it simple with metadata.
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch settings" });
+  }
+});
+
+app.post("/settings", async (req, res) => {
+  try {
+    const { key, value, description } = req.body;
+    if (!key) return res.status(400).json({ error: "Key is required" });
+
+    // Upsert logic
+    const existing = await db.query.systemSettings.findFirst({
+      where: (s, { eq }) => eq(s.key, key)
+    });
+
+    if (existing) {
+      await db.update(systemSettings)
+        .set({ value, description, updatedAt: new Date() })
+        .where(eq(systemSettings.key, key));
+    } else {
+      await db.insert(systemSettings).values({ key, value, description });
+    }
+
+    if (key === "auto_crawl_interval_minutes") {
+      setupCronJob();
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Settings Error:", error);
+    res.status(500).json({ error: "Failed to save setting" });
+  }
+});
+
+// USER MANAGEMENT
+app.get("/users", async (req, res) => {
+  try {
+    const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
+    res.json(allUsers);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
+
+app.put("/users/:id", async (req, res) => {
+  try {
+    const { role, status } = req.body;
+    const userId = Number(req.params.id);
+
+    if (!userId) return res.status(400).json({ error: "Invalid ID" });
+
+    await db.update(users)
+      .set({ role, status })
+      .where(eq(users.id, userId));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Update User Error:", error);
+    res.status(500).json({ error: "Failed to update user" });
+  }
+});
+
+// GET Article by Slug (for SEO URLs /tin/{slug})
+app.get("/articles/by-slug/:slug", async (req, res) => {
+  try {
+    const { slug } = req.params;
+    let article = await db.query.articles.findFirst({
+      where: (a, { eq }) => eq(a.slug, slug)
+    });
+
+    // Fallback if not found by slug but is a valid ID
+    if (!article && !isNaN(Number(slug))) {
+      article = await db.query.articles.findFirst({
+        where: (a, { eq }) => eq(a.id, Number(slug))
+      });
+    }
+
+    if (!article) return res.status(404).json({ error: "Article not found" });
+    res.json(article);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ADMIN UTILITY: Fix legacy articles with null status
+app.post("/settings/fix-legacy-status", async (req, res) => {
+  try {
+    const result = await db.update(articles)
+      .set({ status: "PUBLISHED" })
+      .where(isNull(articles.status));
+
+    res.json({ success: true, message: "Updated legacy articles to 'PUBLISHED'" });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// FORCE UPDATE ALL SLUGS (Admin utility endpoint)
+app.post("/force-update-slugs", async (req, res) => {
+  try {
+    const { generateSlug } = await import("@packages/db/src/utils");
+
+    const allArticles = await db.select().from(articles);
+    console.log(`🔄 Force updating slugs for ${allArticles.length} articles...`);
+
+    const existingSlugs: string[] = [];
+    let updated = 0;
+
+    for (const article of allArticles) {
+      // Logic from backfill script
+      let baseSlug = generateSlug(article.title);
+      let uniqueSlug = baseSlug;
+      let counter = 1;
+
+      while (existingSlugs.includes(uniqueSlug)) {
+        uniqueSlug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+
+      await db.update(articles)
+        .set({ slug: uniqueSlug })
+        .where(eq(articles.id, article.id));
+
+      existingSlugs.push(uniqueSlug);
+      updated++;
+    }
+
+    res.json({ success: true, updated, total: allArticles.length });
+  } catch (error: any) {
+    console.error("Force update slugs error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// CRON JOB: Auto-sync
+let currentCronJob: any = null;
+
+export async function setupCronJob() {
+  if (currentCronJob) {
+    currentCronJob.stop();
+  }
+
+  try {
+    const intervalSetting = await db.query.systemSettings.findFirst({
+      where: (s, { eq }) => eq(s.key, "auto_crawl_interval_minutes")
+    });
+
+    const minutes = intervalSetting && intervalSetting.value ? parseInt(intervalSetting.value, 10) : 30;
+    const safeMinutes = (isNaN(minutes) || minutes < 5) ? 30 : minutes;
+
+    console.log(`⏰ [Cron] Configuring auto-sync interval to ${safeMinutes} minutes...`);
+
+    currentCronJob = cron.schedule(`*/${safeMinutes} * * * *`, async () => {
+      console.log("⏰ [Cron] Starting auto-sync for all feeds...");
+      try {
+        const { syncAllFeeds } = await import("./services/sync-service");
+        await syncAllFeeds();
+        console.log("✅ [Cron] Auto-sync complete.");
+      } catch (error) {
+        console.error("❌ [Cron] Auto-sync failed:", error);
+      }
+    });
+  } catch (err) {
+    console.error("Failed to setup cron job", err);
+  }
+}
+
+// Initialize on startup
+setupCronJob();
+
+app.listen(port, () => {
+  console.log(`API running on http://localhost:${port}`);
+  console.log(`⏰ Cron job scheduled: */30 * * * *`);
+});

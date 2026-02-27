@@ -1,0 +1,193 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: var(--font-newsreader);
+  --font-body: var(--font-roboto);
+
+  --color-primary: #3B82F6;
+  --color-secondary: #60A5FA;
+  --color-cta: #F97316;
+  --color-background: #F8FAFC;
+  --color-text: #1E293B;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+}
+
+:root {
+  --background: #F8FAFC;
+  --foreground: #1E293B;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[var(--color-cta)] text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 cursor-pointer;
+  }
+
+  .btn-primary:hover {
+    @apply opacity-90 -translate-y-[1px];
+  }
+
+  .btn-secondary {
+    @apply bg-transparent text-[var(--color-primary)] border-2 border-[var(--color-primary)] px-6 py-3 rounded-lg font-semibold transition-all duration-200 cursor-pointer;
+  }
+
+  .btn-secondary:hover {
+    @apply bg-blue-50;
+  }
+
+  .card {
+    @apply bg-white rounded-xl p-6 shadow-md transition-all duration-200 cursor-pointer;
+  }
+
+  .card:hover {
+    @apply shadow-lg -translate-y-0.5;
+  }
+
+  .input {
+    @apply px-4 py-3 border border-slate-200 rounded-lg text-base transition-colors duration-200;
+  }
+
+  .input:focus {
+    @apply border-[var(--color-primary)] outline-none ring-4 ring-blue-50;
+  }
+}
+
+
+/* Article Content Styling - Override Tailwind Prose */
+.prose .content-body h2,
+.content-body h2 {
+  font-size: 1.875rem !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  margin-top: 2.5rem !important;
+  margin-bottom: 1.25rem !important;
+  line-height: 1.25 !important;
+  border-bottom: 3px solid #3b82f6 !important;
+  padding-bottom: 0.75rem !important;
+}
+
+.prose .content-body h3,
+.content-body h3 {
+  font-size: 1.5rem !important;
+  font-weight: 600 !important;
+  color: #1e293b !important;
+  margin-top: 2rem !important;
+  margin-bottom: 1rem !important;
+  line-height: 1.375 !important;
+}
+
+.prose .content-body p,
+.content-body p {
+  font-size: 1.125rem !important;
+  line-height: 1.875 !important;
+  color: #334155 !important;
+  margin-bottom: 1.5rem !important;
+  text-align: justify !important;
+}
+
+.prose .content-body strong,
+.prose .content-body b,
+.content-body strong,
+.content-body b {
+  font-weight: 700 !important;
+  color: #0f172a !important;
+}
+
+.prose .content-body ul,
+.content-body ul {
+  list-style-type: disc !important;
+  margin-left: 2rem !important;
+  margin-bottom: 1.5rem !important;
+}
+
+.prose .content-body li,
+.content-body li {
+  font-size: 1.0625rem !important;
+  line-height: 1.875 !important;
+  color: #475569 !important;
+  margin-bottom: 0.625rem !important;
+  padding-left: 0.5rem !important;
+}
+
+.prose .content-body table,
+.content-body table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  margin: 2rem 0 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  border-radius: 0.75rem !important;
+  overflow: hidden !important;
+  font-size: 0.9375rem !important;
+}
+
+.prose .content-body thead,
+.content-body thead {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+}
+
+.prose .content-body th,
+.content-body th {
+  padding: 1rem 1.25rem !important;
+  text-align: center !important;
+  font-weight: 700 !important;
+  font-size: 0.875rem !important;
+  color: white !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.prose .content-body th:last-child,
+.content-body th:last-child {
+  border-right: none !important;
+}
+
+.prose .content-body tbody tr,
+.content-body tbody tr {
+  border-bottom: 1px solid #e2e8f0 !important;
+  transition: all 0.2s ease !important;
+}
+
+.prose .content-body tbody tr:hover,
+.content-body tbody tr:hover {
+  background-color: #f1f5f9 !important;
+  transform: scale(1.002) !important;
+}
+
+.prose .content-body tbody tr:last-child,
+.content-body tbody tr:last-child {
+  border-bottom: none !important;
+}
+
+.prose .content-body td,
+.content-body td {
+  padding: 0.875rem 1.25rem !important;
+  font-size: 0.9375rem !important;
+  color: #475569 !important;
+  text-align: center !important;
+  border-right: 1px solid #f1f5f9 !important;
+}
+
+.prose .content-body td:last-child,
+.content-body td:last-child {
+  border-right: none !important;
+}
+
+.prose .content-body tbody tr:nth-child(even),
+.content-body tbody tr:nth-child(even) {
+  background-color: #f8fafc !important;
+}
+
+.prose .content-body tbody tr:nth-child(even):hover,
+.content-body tbody tr:nth-child(even):hover {
+  background-color: #f1f5f9 !important;
+}
