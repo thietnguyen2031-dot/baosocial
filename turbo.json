@@ -8,6 +8,15 @@
             "dependsOn": [
                 "^build"
             ],
+            "env": [
+                "GOOGLE_CLIENT_ID",
+                "GOOGLE_CLIENT_SECRET",
+                "AUTH_SECRET",
+                "DATABASE_URL",
+                "NEXTAUTH_URL",
+                "NEXTAUTH_SECRET",
+                "NEXT_PUBLIC_API_URL"
+            ],
             "outputs": [
                 ".next/**",
                 "!.next/cache/**",
