@@ -5,7 +5,7 @@ dotenv.config();
 
 
 // Helper to get model for a specific key
-const getModel = (key: string) => new GoogleGenerativeAI(key).getGenerativeModel({ model: "gemini-2.5-flash" });
+const getModel = (key: string) => new GoogleGenerativeAI(key).getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // --- Global API Key Manager ---
 interface KeyState {
@@ -229,7 +229,7 @@ export async function generateSEOSuggestions(
         try {
             console.log(`🤖 [AI SEO] Attempting with key: ...${key.slice(-8)}`);
             const model = new GoogleGenerativeAI(key).getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: "gemini-2.0-flash",
             });
             const result = await model.generateContent(prompt);
             const response = await result.response;
