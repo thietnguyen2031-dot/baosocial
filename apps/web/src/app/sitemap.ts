@@ -7,7 +7,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // In production, fetch ALL slugs or top 1000
     let articles = [];
     try {
-        const res = await fetch('http://localhost:3001/news');
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/news`);
         const data = await res.json();
         if (data.success) articles = data.data;
     } catch (e) {

@@ -2,7 +2,7 @@ export default async function AdminDashboard() {
     let stats = { totalArticles: 0, pendingArticles: 0, activeFeeds: 0, visitors: 0 };
     try {
         // Use "no-store" to ensure real-time data
-        const res = await fetch('http://localhost:3001/admin/stats', { cache: 'no-store' });
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/admin/stats`, { cache: 'no-store' });
         if (res.ok) stats = await res.json();
     } catch (e) { console.error(e); }
 

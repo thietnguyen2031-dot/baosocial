@@ -84,7 +84,7 @@ export default function CreateArticlePage() {
         if (!formData.title || !formData.slug) return alert("Vui lòng nhập tiêu đề và slug");
 
         try {
-            const res = await fetch('http://localhost:3001/articles', {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...formData, status })
@@ -166,7 +166,7 @@ export default function CreateArticlePage() {
                                     const btn = document.getElementById('btn-seo-suggest-create');
                                     if (btn) btn.innerText = "🤖 Đang xử lý...";
                                     try {
-                                        const res = await fetch('http://localhost:3001/ai/seo-suggestions', {
+                                        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/ai/seo-suggestions`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ title: formData.title, content: formData.contentAi })

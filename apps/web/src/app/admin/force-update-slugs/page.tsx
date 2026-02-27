@@ -13,7 +13,7 @@ export default function ForceUpdateSlugsPage() {
         setResult(null);
 
         try {
-            const res = await fetch("http://localhost:3001/force-update-slugs", {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/force-update-slugs`, {
                 method: "POST"
             });
             const data = await res.json();

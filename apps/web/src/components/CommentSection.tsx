@@ -29,7 +29,7 @@ export default function CommentSection({ articleId, session }: { articleId: numb
 
     const fetchComments = async () => {
         try {
-            const res = await fetch(`http://localhost:3001/comments?articleId=${articleId}`);
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/comments?articleId=${articleId}`);
             if (res.ok) {
                 const data = await res.json();
                 setComments(data);
@@ -50,7 +50,7 @@ export default function CommentSection({ articleId, session }: { articleId: numb
 
         setLoading(true);
         try {
-            const res = await fetch(`http://localhost:3001/comments`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/comments`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

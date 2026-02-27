@@ -13,7 +13,7 @@ export default function UsersPage() {
     }, []);
 
     const fetchUsers = () => {
-        fetch("http://localhost:3001/users")
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/users`)
             .then((res) => res.json())
             .then((data) => {
                 setUsers(data);
@@ -27,7 +27,7 @@ export default function UsersPage() {
 
     const handleSaveUser = async (user: any) => {
         try {
-            const res = await fetch(`http://localhost:3001/users/${user.id}`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/users/${user.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ role: user.role, status: user.status }),

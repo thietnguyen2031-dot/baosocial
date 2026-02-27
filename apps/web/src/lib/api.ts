@@ -5,7 +5,7 @@
 
 export async function getNews() {
     try {
-        const res = await fetch('http://localhost:3001/articles', { next: { revalidate: 60 } });
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles`, { next: { revalidate: 60 } });
         if (!res.ok) return [];
         const json = await res.json();
         return json || [];
@@ -28,7 +28,7 @@ export async function getRelatedArticles(category: string, excludeId: string) {
 
 export async function getArticle(id: string) {
     try {
-        const res = await fetch(`http://localhost:3001/articles/${id}`, { next: { revalidate: 60 } });
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles/${id}`, { next: { revalidate: 60 } });
         if (!res.ok) return null;
         return await res.json();
     } catch (e) {
@@ -38,7 +38,7 @@ export async function getArticle(id: string) {
 
 export async function getSettings() {
     try {
-        const res = await fetch('http://localhost:3001/settings', { next: { revalidate: 60 } });
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/settings`, { next: { revalidate: 60 } });
         if (!res.ok) return {};
         const data = await res.json();
         return data.reduce((acc: any, curr: any) => {
@@ -52,7 +52,7 @@ export async function getSettings() {
 
 export async function getCategories(headerOnly = false) {
     try {
-        const url = headerOnly ? 'http://localhost:3001/categories?header=true' : 'http://localhost:3001/categories';
+        const url = headerOnly ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories?header=true` : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories`;
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) return [];
         return await res.json();

@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
 
         // Fetch article by ID to get slug
         try {
-            const res = await fetch(`http://localhost:3001/articles/${id}`);
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles/${id}`);
             if (res.ok) {
                 const article = await res.json();
                 if (article && article.slug) {

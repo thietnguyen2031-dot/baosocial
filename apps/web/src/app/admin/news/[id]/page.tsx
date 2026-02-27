@@ -28,7 +28,7 @@ export default function ArticleEditorPage() {
 
     const fetchArticle = async () => {
         try {
-            const res = await fetch(`http://localhost:3001/articles/${id}`);
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles/${id}`);
             const data = await res.json();
             if (data.id) {
                 setFormData({
@@ -61,7 +61,7 @@ export default function ArticleEditorPage() {
         }
 
         try {
-            await fetch(`http://localhost:3001/articles/${id}`, {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...formData, status: statusToSave })
@@ -144,7 +144,7 @@ export default function ArticleEditorPage() {
                                     if (btn) btn.innerText = "🤖 Đang tạo gợi ý SEO...";
 
                                     try {
-                                        const res = await fetch('http://localhost:3001/ai/seo-suggestions', {
+                                        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/ai/seo-suggestions`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({

@@ -18,7 +18,7 @@ export default function SettingsPage() {
     const [autoCrawlInterval, setAutoCrawlInterval] = useState("30");
 
     useEffect(() => {
-        fetch("http://localhost:3001/settings")
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/settings`)
             .then((res) => res.json())
             .then((data) => {
                 setSettings(data);
@@ -40,7 +40,7 @@ export default function SettingsPage() {
 
     const handleSave = async (key: string, value: string, description: string) => {
         try {
-            const res = await fetch("http://localhost:3001/settings", {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/settings`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ key, value, description }),
@@ -287,7 +287,7 @@ function TelegramConfigEditor({ value, onChange }: { value: string, onChange: (v
 
     useEffect(() => {
         // Fetch categories when component mounts
-        fetch("http://localhost:3001/categories")
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories`)
             .then(res => res.json())
             .then(data => Array.isArray(data) && setCategories(data))
             .catch(err => console.error(err));

@@ -27,7 +27,7 @@ export default function CategoriesPage() {
     const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
     const fetchCategories = () => {
-        fetch("http://localhost:3001/categories")
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories`)
             .then(res => res.json())
             .then(data => {
                 setCategories(data);
@@ -43,8 +43,8 @@ export default function CategoriesPage() {
         e.preventDefault();
         try {
             const url = editingId
-                ? `http://localhost:3001/categories/${editingId}`
-                : "http://localhost:3001/categories";
+                ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories/${editingId}`
+                : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories`;
             const method = editingId ? "PATCH" : "POST";
 
             const res = await fetch(url, {
@@ -70,13 +70,13 @@ export default function CategoriesPage() {
 
     const handleDelete = async (id: number) => {
         if (!confirm("Bạn có chắc muốn xóa?")) return;
-        await fetch(`http://localhost:3001/categories/${id}`, { method: "DELETE" });
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories/${id}`, { method: "DELETE" });
         fetchCategories();
     };
 
     const toggleHeader = async (id: number, current: boolean) => {
         try {
-            const res = await fetch(`http://localhost:3001/categories/${id}`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ showOnHeader: !current }),
@@ -108,7 +108,7 @@ export default function CategoriesPage() {
             const payload = newOrder.map((cat, idx) => ({ id: cat.id, listOrder: idx }));
 
             try {
-                await fetch("http://localhost:3001/categories/reorder", {
+                await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories/reorder`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ items: payload })

@@ -27,7 +27,7 @@ export default function ArticleManagementPage() {
 
     const fetchArticles = async () => {
         try {
-            const res = await fetch('http://localhost:3001/articles?status=all', {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles?status=all`, {
                 cache: 'no-store',
                 headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
             }); // Admin needs ALL articles
@@ -48,7 +48,7 @@ export default function ArticleManagementPage() {
         setSyncStats(null);
         setShowLogs(true);
         try {
-            const res = await fetch('http://localhost:3001/sync-news', { method: 'POST' });
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/sync-news`, { method: 'POST' });
             const data = await res.json();
             if (data.debugLogs && Array.isArray(data.debugLogs)) {
                 setSyncLogs(data.debugLogs);
@@ -87,10 +87,10 @@ export default function ArticleManagementPage() {
         try {
             await Promise.all(selectedIds.map(async (id) => {
                 if (action === 'DELETE') {
-                    const res = await fetch(`http://localhost:3001/articles/${id}`, { method: 'DELETE' });
+                    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles/${id}`, { method: 'DELETE' });
                     if (!res.ok) throw new Error('Failed to delete');
                 } else {
-                    await fetch(`http://localhost:3001/articles/${id}`, {
+                    await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles/${id}`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ status: action === 'PUBLISH' ? 'PUBLISHED' : 'PENDING' })
@@ -116,7 +116,7 @@ export default function ArticleManagementPage() {
         setSyncStats(null);
 
         try {
-            const res = await fetch('http://localhost:3001/ai/bulk-seo', {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/ai/bulk-seo`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ articleIds: selectedIds })
@@ -327,7 +327,7 @@ export default function ArticleManagementPage() {
                                         <button
                                             onClick={async () => {
                                                 if (!confirm('Bạn có chắc muốn xóa bài viết này?')) return;
-                                                await fetch(`http://localhost:3001/articles/${article.id}`, { method: 'DELETE' });
+                                                await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles/${article.id}`, { method: 'DELETE' });
                                                 fetchArticles();
                                             }}
                                             className="p-2 hover:bg-red-100 text-red-600 rounded-lg transition-colors"

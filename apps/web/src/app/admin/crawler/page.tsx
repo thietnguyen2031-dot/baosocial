@@ -48,7 +48,7 @@ export default function CrawlerConfigPage() {
 
     const fetchCategories = async () => {
         try {
-            const res = await fetch('http://localhost:3001/categories');
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/categories`);
             const data = await res.json();
             if (Array.isArray(data)) setCategories(data);
         } catch (e) {
@@ -58,7 +58,7 @@ export default function CrawlerConfigPage() {
 
     const fetchFeeds = async () => {
         try {
-            const res = await fetch('http://localhost:3001/rss-feeds');
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/rss-feeds`);
             const data = await res.json();
             if (Array.isArray(data)) {
                 setFeeds(data);
@@ -102,7 +102,7 @@ export default function CrawlerConfigPage() {
 
         try {
             const method = editingId ? 'PUT' : 'POST';
-            const endpoint = editingId ? `http://localhost:3001/rss-feeds/${editingId}` : 'http://localhost:3001/rss-feeds';
+            const endpoint = editingId ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/rss-feeds/${editingId}` : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/rss-feeds`;
 
             const res = await fetch(endpoint, {
                 method,
@@ -131,7 +131,7 @@ export default function CrawlerConfigPage() {
     const handleDelete = async (id: number) => {
         if (!confirm('Bạn có chắc muốn xóa nguồn này?')) return;
         try {
-            await fetch(`http://localhost:3001/rss-feeds/${id}`, { method: 'DELETE' });
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/rss-feeds/${id}`, { method: 'DELETE' });
             fetchFeeds();
         } catch (e) {
             alert('Failed to delete');

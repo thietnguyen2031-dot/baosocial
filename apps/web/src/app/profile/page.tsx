@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 async function getRecentFavorites(userId: string) {
     try {
-        const res = await fetch(`http://localhost:3001/favorites?userId=${userId}`, { cache: 'no-store' });
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/favorites?userId=${userId}`, { cache: 'no-store' });
         if (!res.ok) return [];
         const data = await res.json();
         return data.slice(0, 3); // Top 3

@@ -16,7 +16,7 @@ export default function SaveButton({ articleId, session }: { articleId: number, 
 
     const checkStatus = async () => {
         try {
-            const res = await fetch(`http://localhost:3001/favorites/check?userId=${session.user.id}&articleId=${articleId}`);
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/favorites/check?userId=${session.user.id}&articleId=${articleId}`);
             if (res.ok) {
                 const data = await res.json();
                 setSaved(data.isFavorited);
@@ -36,7 +36,7 @@ export default function SaveButton({ articleId, session }: { articleId: number, 
         setLoading(true);
         try {
             const method = saved ? 'DELETE' : 'POST';
-            const res = await fetch(`http://localhost:3001/favorites`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/favorites`, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
