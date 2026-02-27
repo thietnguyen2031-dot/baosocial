@@ -554,6 +554,38 @@ app.post("/ai/seo-suggestions", async (req, res) => {
   }
 });
 
+// BACKGROUND SEO JOBS MAP
+const seoJobs = new Map<string, {
+  status: 'running' | 'stopped' | 'done',
+  logs: string[],
+  total: number,
+  done: number,
+  success: number,
+  fail: number
+}>();
+
+import { randomUUID } from "crypto";
+
+// GET JOB STATUS
+app.get("/ai/seo-job/:id", (req, res) => {
+  const job = seoJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  res.json(job);
+});
+
+// STOP JOB
+app.post("/ai/seo-stop/:id", (req, res) => {
+  const job = seoJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  if (job.status === 'running') {
+    job.status = 'stopped';
+    job.logs.push(`🛑 Đã nhận yêu cầu dừng bắt buộc từ người dùng.`);
+    res.json({ success: true, message: "Job stopped" });
+  } else {
+    res.json({ success: false, message: "Job is not running" });
+  }
+});
+
 // BULK AUTO SEO ENDPOINT
 app.post("/ai/bulk-seo", async (req, res) => {
   const { articleIds } = req.body;
@@ -580,70 +612,96 @@ app.post("/ai/bulk-seo", async (req, res) => {
       return res.status(400).json({ error: "Vui lòng cấu hình Gemini API Key trước khi dùng Auto SEO." });
     }
 
-    const { generateSEOSuggestions } = await import("@packages/ai");
-
-    let successCount = 0;
-    let failCount = 0;
-    let logs: string[] = [];
-
-    // Process sequentially
-    for (const id of articleIds) {
-      const article = await db.query.articles.findFirst({
-        where: (a, { eq }) => eq(a.id, Number(id))
-      });
-
-      if (!article) {
-        logs.push(`⚠️ ID ${id}: Không tìm thấy bài viết.`);
-        failCount++;
-        continue;
-      }
-
-      if (article.status === 'PUBLISHED') {
-        logs.push(`⏭️ ID ${id}: Đã xuất bản, bỏ qua.`);
-        failCount++;
-        continue;
-      }
-
-      const rawContent = article.contentAi || "";
-      if (rawContent.length < 50) {
-        logs.push(`⚠️ ID ${id}: Bài viết quá ngắn, bỏ qua.`);
-        failCount++;
-        continue;
-      }
-
-      try {
-        logs.push(`🔄 Đang xử lý: ${article.title.substring(0, 40)}...`);
-        const seoData = await generateSEOSuggestions(article.title, rawContent, keys);
-
-        // Auto Publish Logic
-        const newStatus = isTelegramApproval ? 'PENDING' : 'PUBLISHED';
-
-        await db.update(articles)
-          .set({
-            title: seoData.suggestedTitle,
-            slug: seoData.slug,
-            summary: seoData.metaDescription,
-            contentAi: seoData.rewrittenContent,
-            seoTitle: seoData.suggestedTitle,
-            seoDescription: seoData.metaDescription,
-            status: newStatus
-          })
-          .where(eq(articles.id, article.id));
-
-        logs.push(`✅ Thành công: ${seoData.suggestedTitle.substring(0, 40)}...`);
-        successCount++;
-      } catch (err: any) {
-        logs.push(`❌ Lỗi bài ${id}: ${err.message}`);
-        failCount++;
-      }
-    }
-
-    res.json({
-      success: true,
-      message: `Đã xử lý xong. Thành công: ${successCount}, Thất bại: ${failCount}`,
-      stats: { success: successCount, fail: failCount },
-      logs
+    const jobId = randomUUID();
+    seoJobs.set(jobId, {
+      status: 'running',
+      logs: [`🚀 Khởi tạo Job ID: ${jobId}`, `🔄 Đang chuẩn bị chạy Auto SEO cho ${articleIds.length} bài viết...`],
+      total: articleIds.length,
+      done: 0,
+      success: 0,
+      fail: 0
     });
+
+    // Run in background immediately
+    res.json({ success: true, jobId, message: "Bắt đầu chạy nền." });
+
+    // Background process
+    (async () => {
+      const job = seoJobs.get(jobId)!;
+      try {
+        const { generateSEOSuggestions } = await import("@packages/ai");
+
+        // Process sequentially
+        for (const id of articleIds) {
+          if (job.status === 'stopped') {
+            job.logs.push(`🛑 Quá trình đã bị người dùng dừng lại.`);
+            break;
+          }
+
+          const article = await db.query.articles.findFirst({
+            where: (a, { eq }) => eq(a.id, Number(id))
+          });
+
+          if (!article) {
+            job.logs.push(`⚠️ ID ${id}: Không tìm thấy bài viết.`);
+            job.fail++;
+            job.done++;
+            continue;
+          }
+
+          if (article.status === 'PUBLISHED') {
+            job.logs.push(`⏭️ ID ${id}: Đã xuất bản, bỏ qua.`);
+            job.fail++;
+            job.done++;
+            continue;
+          }
+
+          const rawContent = article.contentAi || "";
+          if (rawContent.length < 50) {
+            job.logs.push(`⚠️ ID ${id}: Bài viết quá ngắn, bỏ qua.`);
+            job.fail++;
+            job.done++;
+            continue;
+          }
+
+          try {
+            job.logs.push(`🔄 Đang xử lý: ${article.title.substring(0, 40)}...`);
+            const seoData = await generateSEOSuggestions(article.title, rawContent, keys);
+
+            // Auto Publish Logic
+            const newStatus = isTelegramApproval ? 'PENDING' : 'PUBLISHED';
+
+            await db.update(articles)
+              .set({
+                title: seoData.suggestedTitle,
+                slug: seoData.slug,
+                summary: seoData.metaDescription,
+                contentAi: seoData.rewrittenContent,
+                seoTitle: seoData.suggestedTitle,
+                seoDescription: seoData.metaDescription,
+                status: newStatus
+              })
+              .where(eq(articles.id, article.id));
+
+            job.logs.push(`✅ Thành công: ${seoData.suggestedTitle.substring(0, 40)}...`);
+            job.success++;
+          } catch (err: any) {
+            job.logs.push(`❌ Lỗi bài ${id}: ${err.message}`);
+            job.fail++;
+          }
+          job.done++;
+        }
+
+        if (job.status !== 'stopped') {
+          job.status = 'done';
+          job.logs.push(`🏁 Đã hoàn thành toàn bộ. Thành công: ${job.success}, Thất bại: ${job.fail}`);
+        }
+      } catch (fatalErr: any) {
+        job.status = 'done';
+        job.logs.push(`❌ Lỗi Job: ${fatalErr.message}`);
+      }
+    })();
+
   } catch (error: any) {
     console.error("❌ [AI Bulk SEO] Error:", error.message);
     res.status(500).json({ error: "Lỗi Bulk SEO: " + error.message });

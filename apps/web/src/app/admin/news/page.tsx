@@ -20,6 +20,43 @@ export default function ArticleManagementPage() {
     const [syncLogs, setSyncLogs] = useState<string[]>([]);
     const [showLogs, setShowLogs] = useState(false);
     const [syncStats, setSyncStats] = useState<{ total: number, aiSuccess: number, aiFail: number, mode: string } | null>(null);
+    const [jobId, setJobId] = useState<string | null>(null);
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (jobId) {
+            interval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/ai/seo-job/${jobId}`);
+                    if (!res.ok) return;
+                    const job = await res.json();
+
+                    if (job.logs) {
+                        setSyncLogs(job.logs);
+                    }
+
+                    if (job.status === 'done' || job.status === 'stopped') {
+                        clearInterval(interval);
+                        setJobId(null);
+                        setLoading(false);
+                        fetchArticles();
+                    }
+                } catch (e) {
+                    console.error("Polling error:", e);
+                }
+            }, 2000);
+        }
+        return () => clearInterval(interval);
+    }, [jobId]);
+
+    const handleStopJob = async () => {
+        if (!jobId) return;
+        try {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/ai/seo-stop/${jobId}`, { method: 'POST' });
+        } catch (e) {
+            console.error("Stop error:", e);
+        }
+    };
 
     useEffect(() => {
         fetchArticles();
@@ -123,18 +160,15 @@ export default function ArticleManagementPage() {
             });
             const data = await res.json();
 
-            if (data.logs && Array.isArray(data.logs)) {
-                setSyncLogs(prev => [...prev, ...data.logs]);
+            if (data.jobId) {
+                setJobId(data.jobId);
+                setSelectedIds([]);
+            } else {
+                setSyncLogs(prev => [...prev, '❌ Lỗi: Không khởi tạo được Job!']);
+                setLoading(false);
             }
-            if (data.message) {
-                setSyncLogs(prev => [...prev, `✅ ${data.message}`]);
-            }
-
-            setSelectedIds([]);
-            await fetchArticles();
         } catch (e) {
-            setSyncLogs(prev => [...prev, '❌ Lỗi khi chạy Auto SEO!']);
-        } finally {
+            setSyncLogs(prev => [...prev, '❌ Lỗi kết nối API!']);
             setLoading(false);
         }
     };
@@ -206,9 +240,16 @@ export default function ArticleManagementPage() {
                             </div>
                         </div>
                     )}
-                    <div className="p-4 border-t border-slate-200 flex justify-between items-center">
-                        <span className="text-sm text-slate-500">{syncLogs.length} dòng log</span>
-                        <button onClick={() => setShowLogs(false)} className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 font-medium">Đóng</button>
+                    <div className="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50">
+                        <span className="text-sm text-slate-500 font-medium">{syncLogs.length} dòng log</span>
+                        <div className="flex gap-3">
+                            {jobId && (
+                                <button onClick={handleStopJob} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold flex items-center gap-2 shadow-sm shadow-red-500/20 transition-all">
+                                    <XCircle size={18} /> Dừng Auto SEO
+                                </button>
+                            )}
+                            <button onClick={() => setShowLogs(false)} className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold transition-colors">Đóng</button>
+                        </div>
                     </div>
                 </div>
             )}
