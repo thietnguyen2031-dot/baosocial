@@ -4,7 +4,7 @@
     "private": true,
     "scripts": {
         "dev": "tsx watch src/index.ts",
-        "build": "tsup src/index.ts --format cjs --outDir dist --dts",
+        "build": "tsup",
         "start": "node dist/index.js",
         "lint": "echo 'linting api'"
     },
