@@ -158,16 +158,14 @@ export class RSSCrawler {
             const cheerio = await import('cheerio');
             const res = await fetch(url, {
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Cache-Control': 'no-cache'
                 }
             });
             const html = await res.text();
             const $ = cheerio.load(html);
-
-            // Generic selector strategy for news sites
-            // Remove unwanted elements
-            $('script, style, nav, header, footer, .ads, .comments, .related-posts, .menu').remove();
-            $('.__mb_article_in_image').remove(); // Remove related news tables (BaoQuocTe specific)
 
             // Generic selector strategy for news sites
             // Remove unwanted elements
@@ -234,6 +232,7 @@ export class RSSCrawler {
                     '#content',
                     '.entry-content',
                     '.detail-content',
+                    '.article-detail',
                     '.main-content'
                 ];
 

@@ -104,16 +104,22 @@ export async function fetchContent(url: string, options?: {
     excludeSelector?: string | null,
     titleSelector?: string | null,
     descriptionSelector?: string | null
-}): Promise<{ content: string, title?: string, description?: string }> {
+}): Promise<{ content: string, title?: string, description?: string, thumbnail?: string }> {
     try {
-        const res = await fetch(url);
+        const res = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Cache-Control': 'no-cache'
+            }
+        });
         const html = await res.text();
         const $ = cheerio.load(html);
 
-        // Generic selector strategy for news sites
         // Remove unwanted elements
         $('script, style, nav, header, footer, .ads, .comments, .related-posts, .menu').remove();
-        $('.__mb_article_in_image').remove(); // Remove related news tables (BaoQuocTe specific)
+        $('.__mb_article_in_image').remove();
 
         if (options?.excludeSelector) {
             $(options.excludeSelector).remove();
@@ -122,6 +128,11 @@ export async function fetchContent(url: string, options?: {
         let content = '';
         let title = '';
         let description = '';
+        let thumbnail = '';
+
+        // Extract og:image thumbnail
+        const ogImage = $('meta[property="og:image"]').attr('content');
+        if (ogImage) thumbnail = ogImage;
 
         // Extract Title
         if (options?.titleSelector) {
@@ -133,30 +144,40 @@ export async function fetchContent(url: string, options?: {
             description = $(options.descriptionSelector).first().text().trim();
         }
 
-        // Priority 1: Custom User Selector (Supports multiple elements)
+        // Helper to extract real image src (handles data-src lazy load)
+        const extractRealSrc = (el: any): string => {
+            return $(el).attr('data-src') || $(el).attr('data-original') || $(el).attr('data-lazy-src') || $(el).attr('src') || '';
+        };
+
+        // Priority 1: Custom User Selector
         if (options?.contentSelector) {
             const el = $(options.contentSelector);
             if (el.length > 0) {
-                // Concatenate all matched elements
-                el.each((i, element) => {
+                el.each((i: number, element: any) => {
                     content += $(element).html() || '';
                 });
+                if (!thumbnail) {
+                    const firstImg = el.find('img').first();
+                    const src = extractRealSrc(firstImg);
+                    if (src) thumbnail = src;
+                }
             }
         }
 
-        // Priority 2: Fallback to common selectors (First match only)
+        // Priority 2: Fallback to common selectors
         if (!content) {
             const commonSelectors = [
                 'article',
-                '#content-body', // BaoQuocTe
+                '#content-body',
                 '.article-content-body',
                 '.body-content',
                 '.article-content',
                 '.post-content',
-                '.content-detail', // Dantri, etc.
+                '.content-detail',
                 '#content',
                 '.entry-content',
-                '.detail-content', // VnExpress',
+                '.detail-content',
+                '.article-detail',
                 '.main-content'
             ];
 
@@ -164,23 +185,31 @@ export async function fetchContent(url: string, options?: {
                 const el = $(selector);
                 if (el.length > 0) {
                     content = el.html() || '';
+                    if (!thumbnail) {
+                        const firstImg = el.find('img').first();
+                        const src = extractRealSrc(firstImg);
+                        if (src) thumbnail = src;
+                    }
                     break;
                 }
             }
         }
 
-        // Clean up the HTML a bit
+        // Clean up: unwrap links but PRESERVE nested img tags
         if (content) {
             const clean$ = cheerio.load(content, null, false);
-            clean$('a').replaceWith(function () { return clean$(this).text(); }); // Remove links
-            clean$('.__mb_article_in_image').remove(); // Extra safety check inside content
-
+            clean$('a').each((_: number, el: any) => {
+                const inner = clean$(el).html() || '';
+                clean$(el).replaceWith(inner);
+            });
+            clean$('.__mb_article_in_image').remove();
             content = clean$.root().html() || '';
         }
 
-        return { content, title, description };
+        return { content, title, description, thumbnail };
     } catch (error) {
         console.error(`Error scraping ${url}:`, error);
         return { content: '' };
     }
 }
+
