@@ -8,22 +8,27 @@ dotenv.config();
 interface KeyState {
     lastUsed: number;
     inUse: boolean;
+    disabledUntil: number;
 }
 const keyStates = new Map<string, KeyState>();
 
 async function acquireKey(validKeys: string[]): Promise<string> {
     validKeys.forEach(k => {
-        if (!keyStates.has(k)) keyStates.set(k, { lastUsed: 0, inUse: false });
+        if (!keyStates.has(k)) keyStates.set(k, { lastUsed: 0, inUse: false, disabledUntil: 0 });
     });
 
     while (true) {
         let bestKey: string | null = null;
         let oldestTime = Infinity;
 
-        // Find the available key with the oldest lastUsed time
+        // Find the available key with the oldest lastUsed time and not disabled
         for (const key of validKeys) {
             const state = keyStates.get(key)!;
-            if (!state.inUse && state.lastUsed < oldestTime) {
+            // Clear disabled flag if the time has passed
+            if (state.disabledUntil > 0 && Date.now() > state.disabledUntil) {
+                state.disabledUntil = 0;
+            }
+            if (!state.inUse && state.disabledUntil === 0 && state.lastUsed < oldestTime) {
                 oldestTime = state.lastUsed;
                 bestKey = key;
             }
@@ -53,11 +58,28 @@ async function acquireKey(validKeys: string[]): Promise<string> {
     }
 }
 
-function releaseKey(key: string) {
+function releaseKey(key: string, error?: any) {
     const state = keyStates.get(key);
     if (state) {
         state.inUse = false;
-        state.lastUsed = Date.now(); // Start 1-min cooldown AFTER it finishes
+        state.lastUsed = Date.now(); // Start cooldown AFTER it finishes
+
+        // Handle Quota and Rate Limit Errors
+        if (error) {
+            const msg = error.message || "";
+            if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+                let waitMs = 60000; // Default 1 minute penalty for 429
+
+                // Try to extract retry delay from error message (e.g. "Please retry in 46.58s")
+                const retryMatch = msg.match(/retry in ([\d\.]+)s/i);
+                if (retryMatch && retryMatch[1]) {
+                    waitMs = (parseFloat(retryMatch[1]) + 2) * 1000; // Add 2s padding
+                }
+
+                state.disabledUntil = Date.now() + waitMs;
+                console.log(`⏳ [AI] Key [${key}] rate limited. Disabled for ${Math.round(waitMs / 1000)}s.`);
+            }
+        }
     }
 }
 
@@ -119,7 +141,7 @@ export async function rewriteContent(content: string, apiKeys: string[] = []): P
     while (attempts < maxAttempts) {
         const key = await acquireKey(validKeys);
         try {
-            console.log(`🤖 [AI] Attempting with key: ...${key.slice(-8)}`);
+            console.log(`🤖 [AI] Attempting with key: [${key}]`);
             const ai = new GoogleGenAI({ apiKey: key });
             const response = await ai.models.generateContent({
                 model: "gemini-3-flash-preview",
@@ -144,9 +166,9 @@ export async function rewriteContent(content: string, apiKeys: string[] = []): P
             releaseKey(key);
             return html;
         } catch (error: any) {
-            console.error(`⚠️ [AI] Key ...${key.slice(-4)} failed:`, error.message);
+            console.error(`⚠️ [AI] Key [${key}] failed:`, error.message);
             lastError = error;
-            releaseKey(key);
+            releaseKey(key, error);
             attempts++;
             // Continue to next key
         }
@@ -233,7 +255,7 @@ export async function generateSEOSuggestions(
     while (attempts < maxAttempts) {
         const key = await acquireKey(validKeys);
         try {
-            console.log(`🤖 [AI SEO] Attempting with key: ...${key.slice(-8)}`);
+            console.log(`🤖 [AI SEO] Attempting with key: [${key}]`);
             const ai = new GoogleGenAI({ apiKey: key });
             const response = await ai.models.generateContent({
                 model: "gemini-3-flash-preview",
@@ -289,9 +311,9 @@ export async function generateSEOSuggestions(
             releaseKey(key);
             return parsed;
         } catch (error: any) {
-            console.error(`⚠️ [AI SEO] Key ...${key.slice(-4)} failed:`, error.message);
+            console.error(`⚠️ [AI SEO] Key [${key}] failed:`, error.message);
             lastError = error;
-            releaseKey(key);
+            releaseKey(key, error);
             attempts++;
         }
     }
