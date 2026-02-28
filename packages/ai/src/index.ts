@@ -168,7 +168,7 @@ export async function rewriteContent(content: string, apiKeys: string[] = []): P
         const key = await acquireKey(validKeys);
         const state = keyStates.get(key)!;
 
-        let targetModel = "gemini-3-flash";
+        let targetModel = "gemini-3-flash-preview";
         if (state.gemini3ExhaustedUntil > 0 && state.gemini25ExhaustedUntil === 0) {
             targetModel = "gemini-2.5-flash";
         }
@@ -289,7 +289,7 @@ export async function generateSEOSuggestions(
         const key = await acquireKey(validKeys);
         const state = keyStates.get(key)!;
 
-        let targetModel = "gemini-3-flash";
+        let targetModel = "gemini-3-flash-preview";
         if (state.gemini3ExhaustedUntil > 0 && state.gemini25ExhaustedUntil === 0) {
             targetModel = "gemini-2.5-flash";
         }
