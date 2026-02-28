@@ -9,26 +9,42 @@ interface KeyState {
     lastUsed: number;
     inUse: boolean;
     disabledUntil: number;
+    gemini3ExhaustedUntil: number;
+    gemini25ExhaustedUntil: number;
 }
 const keyStates = new Map<string, KeyState>();
 
+function getNextResetTimeMs(): number {
+    const now = new Date();
+    // Midnight PT is 08:00 UTC (15:00 GMT+7)
+    const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 8, 0, 0, 0));
+    if (now.getTime() >= reset.getTime()) {
+        reset.setUTCDate(reset.getUTCDate() + 1);
+    }
+    return reset.getTime();
+}
+
 async function acquireKey(validKeys: string[]): Promise<string> {
     validKeys.forEach(k => {
-        if (!keyStates.has(k)) keyStates.set(k, { lastUsed: 0, inUse: false, disabledUntil: 0 });
+        if (!keyStates.has(k)) keyStates.set(k, { lastUsed: 0, inUse: false, disabledUntil: 0, gemini3ExhaustedUntil: 0, gemini25ExhaustedUntil: 0 });
     });
 
     while (true) {
         let bestKey: string | null = null;
         let oldestTime = Infinity;
+        const now = Date.now();
 
         // Find the available key with the oldest lastUsed time and not disabled
         for (const key of validKeys) {
             const state = keyStates.get(key)!;
             // Clear disabled flag if the time has passed
-            if (state.disabledUntil > 0 && Date.now() > state.disabledUntil) {
-                state.disabledUntil = 0;
-            }
-            if (!state.inUse && state.disabledUntil === 0 && state.lastUsed < oldestTime) {
+            if (state.disabledUntil > 0 && now > state.disabledUntil) state.disabledUntil = 0;
+            if (state.gemini3ExhaustedUntil > 0 && now > state.gemini3ExhaustedUntil) state.gemini3ExhaustedUntil = 0;
+            if (state.gemini25ExhaustedUntil > 0 && now > state.gemini25ExhaustedUntil) state.gemini25ExhaustedUntil = 0;
+
+            const isExhausted = state.gemini3ExhaustedUntil > 0 && state.gemini25ExhaustedUntil > 0;
+
+            if (!state.inUse && state.disabledUntil === 0 && !isExhausted && state.lastUsed < oldestTime) {
                 oldestTime = state.lastUsed;
                 bestKey = key;
             }
@@ -36,13 +52,12 @@ async function acquireKey(validKeys: string[]): Promise<string> {
 
         if (bestKey) {
             const state = keyStates.get(bestKey)!;
-            const now = Date.now();
             const timeSinceLastUse = now - state.lastUsed;
             const COOLDOWN_MS = 60000; // 1 minute
 
             if (timeSinceLastUse < COOLDOWN_MS) {
                 const waitTime = COOLDOWN_MS - timeSinceLastUse;
-                console.log(`⏳ [AI] Key ...${bestKey.slice(-8)} is cooling down. Waiting ${Math.round(waitTime / 1000)}s...`);
+                console.log(`⏳ [AI] Key [${bestKey}] is cooling down. Waiting ${Math.round(waitTime / 1000)}s...`);
                 await new Promise(resolve => setTimeout(resolve, waitTime));
             }
 
@@ -53,12 +68,12 @@ async function acquireKey(validKeys: string[]): Promise<string> {
         }
 
         // Wait if all keys are busy (e.g. processing other articles concurrently)
-        console.log(`⏳ [AI] All keys are currently in use. Waiting...`);
+        console.log(`⏳ [AI] All keys are currently in use or exhausted. Waiting...`);
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
 }
 
-function releaseKey(key: string, error?: any) {
+function releaseKey(key: string, targetModel?: string, error?: any) {
     const state = keyStates.get(key);
     if (state) {
         state.inUse = false;
@@ -68,16 +83,27 @@ function releaseKey(key: string, error?: any) {
         if (error) {
             const msg = error.message || "";
             if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED")) {
-                let waitMs = 60000; // Default 1 minute penalty for 429
+                const nextReset = getNextResetTimeMs();
 
-                // Try to extract retry delay from error message (e.g. "Please retry in 46.58s")
-                const retryMatch = msg.match(/retry in ([\d\.]+)s/i);
-                if (retryMatch && retryMatch[1]) {
-                    waitMs = (parseFloat(retryMatch[1]) + 2) * 1000; // Add 2s padding
+                if (targetModel && targetModel.includes("gemini-3")) {
+                    state.gemini3ExhaustedUntil = nextReset;
+                    console.log(`🛑 [AI] Key [${key}] exhausted for ${targetModel}. Disabled until 15:00 GMT+7.`);
+                } else if (targetModel && targetModel.includes("gemini-2.5")) {
+                    state.gemini25ExhaustedUntil = nextReset;
+                    console.log(`🛑 [AI] Key [${key}] exhausted for ${targetModel}. Disabled until 15:00 GMT+7.`);
+                } else {
+                    let waitMs = 60000; // Default 1 minute penalty for 429
+                    // Try to extract retry delay from error message (e.g. "Please retry in 46.58s")
+                    const retryMatch = msg.match(/retry in ([\d\.]+)s/i);
+                    if (retryMatch && retryMatch[1]) {
+                        waitMs = (parseFloat(retryMatch[1]) + 2) * 1000; // Add 2s padding
+                    }
+                    state.disabledUntil = Date.now() + waitMs;
+                    console.log(`⏳ [AI] Key [${key}] rate limited. Disabled for ${Math.round(waitMs / 1000)}s.`);
                 }
-
-                state.disabledUntil = Date.now() + waitMs;
-                console.log(`⏳ [AI] Key [${key}] rate limited. Disabled for ${Math.round(waitMs / 1000)}s.`);
+            } else {
+                state.disabledUntil = Date.now() + 60000;
+                console.log(`⏳ [AI] Key [${key}] errored (non-quota). Disabled for 60s.`);
             }
         }
     }
@@ -135,22 +161,29 @@ export async function rewriteContent(content: string, apiKeys: string[] = []): P
 
     let lastError = null;
     let attempts = 0;
-    const maxAttempts = validKeys.length;
+    const maxAttempts = validKeys.length * 2; // Allow 2 attempts per key (for both models)
 
     // Retry with rotation via KeyManager
     while (attempts < maxAttempts) {
         const key = await acquireKey(validKeys);
+        const state = keyStates.get(key)!;
+
+        let targetModel = "gemini-3-flash";
+        if (state.gemini3ExhaustedUntil > 0 && state.gemini25ExhaustedUntil === 0) {
+            targetModel = "gemini-2.5-flash";
+        }
+
         try {
-            console.log(`🤖 [AI] Attempting with key: [${key}]`);
+            console.log(`🤖 [AI] Attempting with key: [${key}] - Model: ${targetModel}`);
             const ai = new GoogleGenAI({ apiKey: key });
+
+            const isGemini3 = targetModel.includes("gemini-3");
+            const configParams: any = isGemini3 ? { thinkingConfig: { thinkingLevel: "low" } } : {};
+
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: targetModel,
                 contents: prompt,
-                config: {
-                    thinkingConfig: {
-                        thinkingLevel: "low" as any // Workaround cho TS lỗi enum, document ghi nhận
-                    }
-                }
+                config: configParams
             });
             let html = response.text || "";
 
@@ -162,15 +195,15 @@ export async function rewriteContent(content: string, apiKeys: string[] = []): P
                 .replace(/\n/g, ' ')
                 .trim();
 
-            console.log(`✅ [AI] Success with key: ...${key.slice(-8)}`);
+            console.log(`✅ [AI] Success with key: [${key}] - Model: ${targetModel}`);
             releaseKey(key);
             return html;
         } catch (error: any) {
-            console.error(`⚠️ [AI] Key [${key}] failed:`, error.message);
+            console.error(`⚠️ [AI] Key [${key}] - Model: ${targetModel} failed:`, error.message);
             lastError = error;
-            releaseKey(key, error);
+            releaseKey(key, targetModel, error);
             attempts++;
-            // Continue to next key
+            // Continue to next attempt
         }
     }
 
@@ -250,21 +283,28 @@ export async function generateSEOSuggestions(
 
     let lastError = null;
     let attempts = 0;
-    const maxAttempts = validKeys.length;
+    const maxAttempts = validKeys.length * 2; // Allow 2 attempts per key (for both models)
 
     while (attempts < maxAttempts) {
         const key = await acquireKey(validKeys);
+        const state = keyStates.get(key)!;
+
+        let targetModel = "gemini-3-flash";
+        if (state.gemini3ExhaustedUntil > 0 && state.gemini25ExhaustedUntil === 0) {
+            targetModel = "gemini-2.5-flash";
+        }
+
         try {
-            console.log(`🤖 [AI SEO] Attempting with key: [${key}]`);
+            console.log(`🤖 [AI SEO] Attempting with key: [${key}] - Model: ${targetModel}`);
             const ai = new GoogleGenAI({ apiKey: key });
+
+            const isGemini3 = targetModel.includes("gemini-3");
+            const configParams: any = isGemini3 ? { thinkingConfig: { thinkingLevel: "low" } } : {};
+
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: targetModel,
                 contents: prompt,
-                config: {
-                    thinkingConfig: {
-                        thinkingLevel: "low" as any
-                    }
-                }
+                config: configParams
             });
             let text = response.text || "";
 
@@ -311,9 +351,9 @@ export async function generateSEOSuggestions(
             releaseKey(key);
             return parsed;
         } catch (error: any) {
-            console.error(`⚠️ [AI SEO] Key [${key}] failed:`, error.message);
+            console.error(`⚠️ [AI SEO] Key [${key}] - Model: ${targetModel} failed:`, error.message);
             lastError = error;
-            releaseKey(key, error);
+            releaseKey(key, targetModel, error);
             attempts++;
         }
     }
