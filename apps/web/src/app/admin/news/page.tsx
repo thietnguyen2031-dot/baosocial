@@ -22,6 +22,39 @@ export default function ArticleManagementPage() {
     const [syncStats, setSyncStats] = useState<{ total: number, aiSuccess: number, aiFail: number, mode: string } | null>(null);
     const [jobId, setJobId] = useState<string | null>(null);
 
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 10;
+
+    // Load Sync State from LocalStorage
+    useEffect(() => {
+        const savedLogs = localStorage.getItem('news_sync_logs');
+        const savedStats = localStorage.getItem('news_sync_stats');
+        const savedShowLogs = localStorage.getItem('news_sync_show_logs');
+        const savedJobId = localStorage.getItem('news_sync_job_id');
+
+        if (savedLogs) setSyncLogs(JSON.parse(savedLogs));
+        if (savedStats) setSyncStats(JSON.parse(savedStats));
+        if (savedShowLogs === 'true') setShowLogs(true);
+        if (savedJobId) setJobId(savedJobId);
+    }, []);
+
+    // Save Sync State to LocalStorage
+    useEffect(() => {
+        localStorage.setItem('news_sync_logs', JSON.stringify(syncLogs));
+        if (syncStats) {
+            localStorage.setItem('news_sync_stats', JSON.stringify(syncStats));
+        } else {
+            localStorage.removeItem('news_sync_stats');
+        }
+        localStorage.setItem('news_sync_show_logs', showLogs.toString());
+        if (jobId) {
+            localStorage.setItem('news_sync_job_id', jobId);
+        } else {
+            localStorage.removeItem('news_sync_job_id');
+        }
+    }, [syncLogs, syncStats, showLogs, jobId]);
+
     useEffect(() => {
         let interval: NodeJS.Timeout;
         if (jobId) {
@@ -206,17 +239,27 @@ export default function ArticleManagementPage() {
                         <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                             <span className="text-2xl">📋</span> Nhật ký đồng bộ
                         </h2>
-                        <button onClick={() => setShowLogs(false)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                        <button
+                            onClick={() => {
+                                setShowLogs(false);
+                                localStorage.removeItem('news_sync_logs');
+                                localStorage.removeItem('news_sync_stats');
+                                localStorage.removeItem('news_sync_show_logs');
+                            }}
+                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                        >
                             <X size={20} />
                         </button>
                     </div>
-                    <div className="max-h-96 overflow-y-auto p-4 bg-slate-900 font-mono text-sm">
-                        {syncLogs.map((log, idx) => (
-                            <div key={idx} className="text-green-400 mb-1 whitespace-pre-wrap">
-                                {log}
-                            </div>
-                        ))}
-                        {loading && <div className="text-yellow-400 animate-pulse">⏳ Đang xử lý...</div>}
+                    <div className="max-h-96 overflow-y-auto p-4 bg-slate-900 font-mono text-sm flex flex-col-reverse">
+                        <div>
+                            {syncLogs.map((log, idx) => (
+                                <div key={idx} className="text-green-400 mb-1 whitespace-pre-wrap">
+                                    {log}
+                                </div>
+                            ))}
+                            {loading && <div className="text-yellow-400 animate-pulse mt-2">⏳ Đang xử lý...</div>}
+                        </div>
                     </div>
                     {syncStats && (
                         <div className="p-4 border-t border-slate-200 bg-blue-50">
@@ -248,7 +291,17 @@ export default function ArticleManagementPage() {
                                     <XCircle size={18} /> Dừng Auto SEO
                                 </button>
                             )}
-                            <button onClick={() => setShowLogs(false)} className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold transition-colors">Đóng</button>
+                            <button
+                                onClick={() => {
+                                    setShowLogs(false);
+                                    localStorage.removeItem('news_sync_logs');
+                                    localStorage.removeItem('news_sync_stats');
+                                    localStorage.removeItem('news_sync_show_logs');
+                                }}
+                                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold transition-colors"
+                            >
+                                Đóng
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -292,13 +345,13 @@ export default function ArticleManagementPage() {
             {/* Tabs */}
             <div className="flex gap-4 mb-6 border-b border-slate-200">
                 <button
-                    onClick={() => { setFilterStatus('PENDING'); setSelectedIds([]); }}
+                    onClick={() => { setFilterStatus('PENDING'); setSelectedIds([]); setCurrentPage(1); }}
                     className={`pb-3 px-1 text-sm font-bold uppercase tracking-wide border-b-2 transition-colors ${filterStatus === 'PENDING' ? 'border-orange-500 text-orange-500' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                 >
                     CHỜ DUYỆT <span className="ml-2 px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-xs">{articles.filter(a => a.status === 'PENDING').length}</span>
                 </button>
                 <button
-                    onClick={() => { setFilterStatus('PUBLISHED'); setSelectedIds([]); }}
+                    onClick={() => { setFilterStatus('PUBLISHED'); setSelectedIds([]); setCurrentPage(1); }}
                     className={`pb-3 px-1 text-sm font-bold uppercase tracking-wide border-b-2 transition-colors ${filterStatus === 'PUBLISHED' ? 'border-green-600 text-green-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                 >
                     ĐÃ XUẤT BẢN <span className="ml-2 px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-xs">{articles.filter(a => a.status === 'PUBLISHED').length}</span>
@@ -331,7 +384,7 @@ export default function ArticleManagementPage() {
                         {!loading && filtered.length === 0 && (
                             <tr><td colSpan={5} className="text-center py-12 text-slate-500">Không có bài viết nào</td></tr>
                         )}
-                        {!loading && filtered.map((article) => (
+                        {!loading && filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((article) => (
                             <tr key={article.id} className={`border-t border-slate-100 hover:bg-slate-50 transition-colors ${selectedIds.includes(article.id) ? 'bg-blue-50' : ''}`}>
                                 <td className="px-6 py-4">
                                     <input
@@ -382,6 +435,29 @@ export default function ArticleManagementPage() {
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination Controls */}
+            {!loading && filtered.length > pageSize && (
+                <div className="flex justify-between items-center mt-6 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        Trang trước
+                    </button>
+                    <span className="text-sm font-medium text-slate-600">
+                        Trang {currentPage} / {Math.ceil(filtered.length / pageSize)}
+                    </span>
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filtered.length / pageSize)))}
+                        disabled={currentPage === Math.ceil(filtered.length / pageSize)}
+                        className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        Trang sau
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
