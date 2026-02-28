@@ -103,6 +103,7 @@ export async function rewriteContent(content: string, apiKeys: string[] = []): P
     - Sử dụng <strong> hoặc <b> để làm nổi bật từ khóa, con số quan trọng
     - Sử dụng <ul> và <li> cho danh sách liệt kê
     - Sử dụng <table> với <thead>, <tbody>, <tr>, <th>, <td> nếu có dữ liệu dạng bảng
+    - BẮT BUỘC GIỮ NGUYÊN toàn bộ thẻ <img src="..."> (hình ảnh) trong bài viết, tuyệt đối không được xóa
     - KHÔNG sử dụng thẻ <div>, <span> hoặc class/style inline
     - Trả về CHÍNH XÁC mã HTML thuần túy, KHÔNG có markdown, KHÔNG có \`\`\`html wrapper
     
@@ -213,6 +214,7 @@ export async function generateSEOSuggestions(
     - KHÔNG copy y nguyên bản gốc. Thay đổi cấu trúc câu, cách diễn đạt nhưng giữ nguyên ý nghĩa cốt lõi.
     - Giữ nguyên số liệu, tên riêng, và sự kiện chính.
     - Định dạng HTML thuần túy (h2, h3, p, strong, ul, li, table).
+    - BẮT BUỘC GIỮ NGUYÊN toàn bộ thẻ <img src="..."> (hình ảnh) trong bài viết gốc nếu có.
     - Phải chia đoạn và có cấu trúc heading rõ ràng dễ đọc.
     - Văn phong báo chí chuyên nghiệp, lôi cuốn.
     - KHÔNG có wrapper \`\`\`html.

@@ -12,6 +12,15 @@ export interface NewsItem {
     source: string;
 }
 
+// Giúp trích xuất ảnh chuẩn, hỗ trợ lazy-loading
+const extractRealImageSrc = (imgEl: any): string | undefined => {
+    if (!imgEl) return undefined;
+    return imgEl.attr('data-src') ||
+        imgEl.attr('data-original') ||
+        imgEl.attr('data-lazy-src') ||
+        imgEl.attr('src');
+};
+
 const parser = new Parser({
     customFields: {
         item: [
@@ -205,8 +214,9 @@ export class RSSCrawler {
 
                     // If no og:image, try to find first image in content selector
                     if (!thumbnail) {
-                        const firstImg = el.find('img').first().attr('src');
-                        if (firstImg) thumbnail = firstImg;
+                        const firstImg = el.find('img').first();
+                        const imgSrc = extractRealImageSrc(firstImg);
+                        if (imgSrc) thumbnail = imgSrc;
                     }
                 }
             }
@@ -234,8 +244,9 @@ export class RSSCrawler {
 
                         // Fallback thumbnail extraction
                         if (!thumbnail) {
-                            const firstImg = el.find('img').first().attr('src');
-                            if (firstImg) thumbnail = firstImg;
+                            const firstImg = el.find('img').first();
+                            const imgSrc = extractRealImageSrc(firstImg);
+                            if (imgSrc) thumbnail = imgSrc;
                         }
                         break;
                     }
@@ -244,14 +255,27 @@ export class RSSCrawler {
 
             // Final fallback for thumbnail if body extraction failed
             if (!thumbnail) {
-                const firstBodyImg = $('article img, .content img').first().attr('src');
-                if (firstBodyImg) thumbnail = firstBodyImg;
+                const firstBodyImg = $('article img, .content img').first();
+                const imgSrc = extractRealImageSrc(firstBodyImg);
+                if (imgSrc) thumbnail = imgSrc;
+            }
+
+            // Cleanup content images to ensure src is updated from data-src
+            if (content) {
+                const temp$ = cheerio.load(content, null, false);
+                temp$('img').each((_, img) => {
+                    const realSrc = extractRealImageSrc(temp$(img));
+                    if (realSrc && realSrc !== temp$(img).attr('src')) {
+                        temp$(img).attr('src', realSrc);
+                    }
+                });
+                content = temp$.root().html() || '';
             }
 
             // Clean up the HTML a bit
             if (content) {
                 const clean$ = cheerio.load(content, null, false);
-                clean$('a').replaceWith(function () { return clean$(this).text(); }); // Remove links
+                clean$('a').replaceWith(function () { return clean$(this).html() || clean$(this).text(); }); // MUST use html() to prevent images being destroyed
                 clean$('.__mb_article_in_image').remove(); // Extra safety check inside content
 
                 content = clean$.root().html() || '';
