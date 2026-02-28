@@ -50,8 +50,8 @@ export class RSSCrawler {
                 if (item['media'] && item['media']['$'] && item['media']['$']['url']) {
                     imageUrl = item['media']['$']['url'];
                 } else if (item.description) {
-                    // Simple regex to extract first img tag from description
-                    const imgMatch = item.description.match(/<img[^>]+src="([^">]+)"/);
+                    // Xử lý ảnh nằm trong CDATA thẻ description (VD: thethao247.vn)
+                    const imgMatch = item.description.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
                     if (imgMatch) {
                         imageUrl = imgMatch[1];
                     }

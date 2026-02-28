@@ -245,6 +245,16 @@ app.post("/sync-news", async (req, res) => {
         }
         // If Telegram mode is ON, everything stays PENDING
 
+        // Fallback thumbnail extraction from the final content if everything else failed
+        let finalThumbnail = item.thumbnail || scrapedThumbnail || null;
+        if (!finalThumbnail && finalContent) {
+          const match = finalContent.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
+          if (match) {
+            finalThumbnail = match[1];
+            log(`[Sync] 🖼️ Fallback thumbnail from content: ${finalThumbnail.substring(0, 50)}...`);
+          }
+        }
+
         await db.insert(articles).values({
           title: finalTitle,
           slug: finalSlug,
@@ -252,7 +262,7 @@ app.post("/sync-news", async (req, res) => {
           contentAi: finalContent,
           seoTitle: finalSeoTitle,
           seoDescription: finalSeoDesc,
-          thumbnail: item.thumbnail || scrapedThumbnail || null,
+          thumbnail: finalThumbnail,
           sourceUrl: item.link,
           category: feed.category,
           publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
