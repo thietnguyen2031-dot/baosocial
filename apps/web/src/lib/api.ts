@@ -5,7 +5,7 @@
 
 export async function getNews() {
     try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles`, { next: { revalidate: 60 } });
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles`, { cache: 'no-store' });
         if (!res.ok) return [];
         const json = await res.json();
         return json || [];

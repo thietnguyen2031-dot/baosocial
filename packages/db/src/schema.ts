@@ -29,6 +29,7 @@ export const articles = pgTable("articles", {
     category: text("category"), // Denormalized for easier query
     publishedAt: timestamp("published_at"),
     createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const rssFeeds = pgTable("rss_feeds", {

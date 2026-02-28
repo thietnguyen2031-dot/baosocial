@@ -371,23 +371,18 @@ app.get("/crawler/feed-preview", async (req, res) => {
 // GET /articles - List with filters
 app.get("/articles", async (req, res) => {
   try {
-    // Simple fetch all sorted by date
-    // Default: only show PUBLISHED articles (for public homepage)
-    // Admin can override with ?status=all or ?status=draft
     const statusQuery = req.query.status as string;
 
-    const allArticles = await db.select().from(articles).orderBy(desc(articles.publishedAt));
+    // Sort by updatedAt so newly approved articles appear first
+    const allArticles = await db.select().from(articles).orderBy(desc(articles.updatedAt));
 
-    // Filter by status
     let filtered;
     if (statusQuery === 'all') {
-      // Admin: show all
       filtered = allArticles;
     } else if (statusQuery) {
-      // Specific status (draft, published, etc)
       filtered = allArticles.filter(a => a.status === statusQuery);
     } else {
-      // Default: published OR null (legacy articles from RSS without status)
+      // Default: PUBLISHED or legacy null-status articles
       filtered = allArticles.filter(a => a.status === 'PUBLISHED' || a.status === null);
     }
 
@@ -413,12 +408,22 @@ app.get("/articles/:id", async (req, res) => {
 // PATCH /articles/:id
 app.patch("/articles/:id", async (req, res) => {
   try {
-    const { title, slug, summary, contentAi, status, seoTitle, seoDescription, focusKeyword } = req.body;
+    const { title, slug, summary, contentAi, status, seoTitle, seoDescription, focusKeyword, thumbnail } = req.body;
+
+    // Build the set object with only defined fields
+    const updateSet: Record<string, any> = { updatedAt: new Date() };
+    if (title !== undefined) updateSet.title = title;
+    if (slug !== undefined) updateSet.slug = slug;
+    if (summary !== undefined) updateSet.summary = summary;
+    if (contentAi !== undefined) updateSet.contentAi = contentAi;
+    if (status !== undefined) updateSet.status = status;
+    if (seoTitle !== undefined) updateSet.seoTitle = seoTitle;
+    if (seoDescription !== undefined) updateSet.seoDescription = seoDescription;
+    if (focusKeyword !== undefined) updateSet.focusKeyword = focusKeyword;
+    if (thumbnail !== undefined) updateSet.thumbnail = thumbnail;
 
     await db.update(articles)
-      .set({
-        title, slug, summary, contentAi, status, seoTitle, seoDescription, focusKeyword
-      })
+      .set(updateSet)
       .where(eq(articles.id, Number(req.params.id)));
 
     res.json({ success: true });
