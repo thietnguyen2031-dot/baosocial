@@ -360,3 +360,42 @@ export async function generateSEOSuggestions(
 
     throw lastError || new Error("All API keys failed for SEO suggestions.");
 }
+
+// --- Quota Status Export ---
+export const ARTICLES_PER_MODEL_PER_DAY = 20; // Free tier: 20 req/day per model
+
+export function getQuotaStatus(apiKeys: string[]) {
+    const now = Date.now();
+    const nextReset = getNextResetTimeMs();
+
+    return apiKeys.map((key, index) => {
+        if (!keyStates.has(key)) {
+            return {
+                keyIndex: index + 1,
+                keySuffix: `...${key.slice(-6)}`,
+                gemini3Available: true,
+                gemini25Available: true,
+                articlesRemaining: ARTICLES_PER_MODEL_PER_DAY * 2,
+                articlesTotal: ARTICLES_PER_MODEL_PER_DAY * 2,
+                nextResetAt: nextReset
+            };
+        }
+
+        const state = keyStates.get(key)!;
+        const gemini3Available = !(state.gemini3ExhaustedUntil > 0 && now < state.gemini3ExhaustedUntil);
+        const gemini25Available = !(state.gemini25ExhaustedUntil > 0 && now < state.gemini25ExhaustedUntil);
+
+        const availableModelCount = (gemini3Available ? 1 : 0) + (gemini25Available ? 1 : 0);
+        const articlesRemaining = availableModelCount * ARTICLES_PER_MODEL_PER_DAY;
+
+        return {
+            keyIndex: index + 1,
+            keySuffix: `...${key.slice(-6)}`,
+            gemini3Available,
+            gemini25Available,
+            articlesRemaining,
+            articlesTotal: ARTICLES_PER_MODEL_PER_DAY * 2,
+            nextResetAt: nextReset
+        };
+    });
+}

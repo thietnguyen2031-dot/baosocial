@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, Edit, Eye, CheckCircle, XCircle, Trash2, X, Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import QuotaStatus from '@/components/QuotaStatus';
 
 interface Article {
     id: number;
@@ -230,6 +231,11 @@ export default function ArticleManagementPage() {
                         Đồng bộ tin mới
                     </button>
                 </div>
+            </div>
+
+            {/* Quota Status Widget */}
+            <div className="mb-6">
+                <QuotaStatus />
             </div>
 
             {/* Sync Logs Viewer - ABOVE TABS */}

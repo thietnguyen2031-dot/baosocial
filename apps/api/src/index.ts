@@ -301,6 +301,39 @@ app.post("/sync-news", async (req, res) => {
 });
 
 
+// AI QUOTA STATUS ENDPOINT
+app.get("/ai/quota-status", async (req, res) => {
+  try {
+    const keySetting = await db.query.systemSettings.findFirst({
+      where: (s, { eq }) => eq(s.key, "gemini_api_keys")
+    });
+
+    let keys: string[] = [];
+    if (keySetting?.value) {
+      keys = keySetting.value.split(/[\n,]+/).map((k: string) => k.trim()).filter((k: string) => k);
+    }
+
+    const { getQuotaStatus, ARTICLES_PER_MODEL_PER_DAY } = await import("@packages/ai");
+    const quotaData = getQuotaStatus(keys);
+
+    const totalKeys = keys.length;
+    const totalRemaining = quotaData.reduce((sum: number, k: any) => sum + k.articlesRemaining, 0);
+    const totalCapacity = totalKeys * ARTICLES_PER_MODEL_PER_DAY * 2;
+    const nextReset = quotaData[0]?.nextResetAt ?? null;
+
+    res.json({
+      totalKeys,
+      totalRemaining,
+      totalCapacity,
+      nextResetAt: nextReset,
+      keys: quotaData
+    });
+  } catch (error) {
+    console.error("Quota Status Error:", error);
+    res.status(500).json({ error: "Failed to get quota status" });
+  }
+});
+
 // CRAWLER ENDPOINTS
 
 // GET /crawler/preview - Proxy to fetch raw HTML for visual selector
