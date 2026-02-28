@@ -20,6 +20,7 @@ interface Feed {
 export default function CrawlerConfigPage() {
     const [feeds, setFeeds] = useState<Feed[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedFeeds, setSelectedFeeds] = useState<number[]>([]);
 
     // New Feed Form
     const [url, setUrl] = useState('');
@@ -62,12 +63,62 @@ export default function CrawlerConfigPage() {
             const data = await res.json();
             if (Array.isArray(data)) {
                 setFeeds(data);
+                setSelectedFeeds([]); // Clear selection on refresh
             }
         } catch (e) {
             console.error(e);
         } finally {
             setLoading(false);
         }
+    };
+
+    const toggleFeedActive = async (id: number, currentStatus: boolean) => {
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/rss-feeds/${id}/toggle`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isActive: !currentStatus })
+            });
+            if (res.ok) fetchFeeds();
+        } catch (e) {
+            console.error("Lỗi thay đổi trạng thái:", e);
+        }
+    };
+
+    const handleBulkToggle = async (isActive: boolean) => {
+        if (selectedFeeds.length === 0) {
+            alert("Vui lòng chọn ít nhất một luồng tin!");
+            return;
+        }
+
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/rss-feeds/bulk-toggle`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: selectedFeeds, isActive })
+            });
+
+            if (res.ok) {
+                alert(`Đã ${isActive ? 'bật' : 'tắt'} ${selectedFeeds.length} luồng tin!`);
+                fetchFeeds();
+            }
+        } catch (e) {
+            console.error("Lỗi thay đổi trạng thái hàng loạt:", e);
+        }
+    };
+
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            setSelectedFeeds(feeds.map(f => f.id));
+        } else {
+            setSelectedFeeds([]);
+        }
+    };
+
+    const handleSelectFeed = (id: number) => {
+        setSelectedFeeds(prev =>
+            prev.includes(id) ? prev.filter(fid => fid !== id) : [...prev, id]
+        );
     };
 
     const handleEdit = (feed: Feed) => {
@@ -175,8 +226,24 @@ export default function CrawlerConfigPage() {
                     <h1 className="text-2xl font-bold font-display text-slate-900">Cấu hình Crawler</h1>
                     <p className="text-slate-500">Quản lý các nguồn tin RSS tự động</p>
                 </div>
-                <div className="flex gap-3">
-                    {/* <AutoSeoToggle /> Removed Global Toggle */}
+                <div className="flex gap-3 items-center">
+                    {selectedFeeds.length > 0 && (
+                        <div className="flex items-center gap-2 mr-4 border-r pr-4 border-slate-200">
+                            <span className="text-sm text-slate-500 font-medium">Đã chọn {selectedFeeds.length}</span>
+                            <button
+                                onClick={() => handleBulkToggle(true)}
+                                className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                Bật Crawl
+                            </button>
+                            <button
+                                onClick={() => handleBulkToggle(false)}
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                Tắt Crawl
+                            </button>
+                        </div>
+                    )}
                     <button
                         onClick={fetchFeeds}
                         className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors"
@@ -324,21 +391,52 @@ export default function CrawlerConfigPage() {
 
             {/* List Feeds */}
             <div className="space-y-4">
+                {feeds.length > 0 && (
+                    <div className="flex items-center px-4 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                        <input
+                            type="checkbox"
+                            checked={selectedFeeds.length === feeds.length}
+                            onChange={handleSelectAll}
+                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mr-4"
+                        />
+                        <span className="text-sm font-medium text-slate-600">Chọn tất cả</span>
+                    </div>
+                )}
                 {feeds.map((feed) => (
-                    <div key={feed.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
-                        <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold uppercase">{feed.source}</span>
-                                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">{feed.category}</span>
-                                {feed.autoSeo && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-bold" title="Auto SEO Enabled">✨ AI SEO</span>}
-                                {feed.contentSelector && <span className="opacity-50 text-xs" title="Custom Selectors Configured">⚙️</span>}
-                            </div>
-                            <div className="font-mono text-sm text-slate-600 truncate flex items-center gap-2">
-                                <Globe size={14} />
-                                <a href={feed.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{feed.url}</a>
+                    <div key={feed.id} className={`bg-white p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 ${feed.isActive ? 'border-l-emerald-500 shadow-sm border-slate-200 border-y border-r' : 'border-l-slate-300 opacity-75 border-slate-200 border-y border-r'}`}>
+                        <div className="flex items-center gap-4 min-w-0 flex-1">
+                            <input
+                                type="checkbox"
+                                checked={selectedFeeds.includes(feed.id)}
+                                onChange={() => handleSelectFeed(feed.id)}
+                                className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${feed.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                        {feed.isActive ? 'Đang bật' : 'Đã tắt'}
+                                    </span>
+                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold uppercase">{feed.source}</span>
+                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">{feed.category}</span>
+                                    {feed.autoSeo && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-bold" title="Auto SEO Enabled">✨ AI SEO</span>}
+                                    {feed.contentSelector && <span className="opacity-50 text-xs" title="Custom Selectors Configured">⚙️</span>}
+                                </div>
+                                <div className={`font-mono text-sm truncate flex items-center gap-2 ${feed.isActive ? 'text-slate-600' : 'text-slate-400'}`}>
+                                    <Globe size={14} />
+                                    <a href={feed.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{feed.url}</a>
+                                </div>
                             </div>
                         </div>
-                        <div className="flex gap-1">
+                        <div className="flex gap-2 shrink-0 border-t md:border-t-0 pt-3 md:pt-0">
+                            <button
+                                onClick={() => toggleFeedActive(feed.id, feed.isActive)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${feed.isActive
+                                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                                    }`}
+                            >
+                                {feed.isActive ? 'Tạm dừng' : 'Bật lại'}
+                            </button>
                             <button
                                 onClick={() => handleEdit(feed)}
                                 className="p-2 text-slate-400 hover:text-orange-600 rounded-lg hover:bg-orange-50 transition-colors"

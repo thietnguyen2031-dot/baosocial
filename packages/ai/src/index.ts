@@ -1,11 +1,8 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 import * as dotenv from "dotenv";
 
 dotenv.config();
 
-
-// Helper to get model for a specific key
-const getModel = (key: string) => new GoogleGenerativeAI(key).getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // --- Global API Key Manager ---
 interface KeyState {
@@ -122,10 +119,17 @@ export async function rewriteContent(content: string, apiKeys: string[] = []): P
         const key = await acquireKey(validKeys);
         try {
             console.log(`🤖 [AI] Attempting with key: ...${key.slice(-8)}`);
-            const model = getModel(key);
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            let html = response.text();
+            const ai = new GoogleGenAI({ apiKey: key });
+            const response = await ai.models.generateContent({
+                model: "gemini-3-flash-preview",
+                contents: prompt,
+                config: {
+                    thinkingConfig: {
+                        thinkingLevel: "low" as any // Workaround cho TS lỗi enum, document ghi nhận
+                    }
+                }
+            });
+            let html = response.text || "";
 
             // Strip markdown code fence and literal \n sequences
             html = html
@@ -228,12 +232,17 @@ export async function generateSEOSuggestions(
         const key = await acquireKey(validKeys);
         try {
             console.log(`🤖 [AI SEO] Attempting with key: ...${key.slice(-8)}`);
-            const model = new GoogleGenerativeAI(key).getGenerativeModel({
-                model: "gemini-2.0-flash",
+            const ai = new GoogleGenAI({ apiKey: key });
+            const response = await ai.models.generateContent({
+                model: "gemini-3-flash-preview",
+                contents: prompt,
+                config: {
+                    thinkingConfig: {
+                        thinkingLevel: "low" as any
+                    }
+                }
             });
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            let text = response.text();
+            let text = response.text || "";
 
             // Strip markdown code fence if present
             text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();

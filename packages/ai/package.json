@@ -4,11 +4,12 @@
     "main": "./src/index.ts",
     "types": "./src/index.ts",
     "dependencies": {
-        "@google/generative-ai": "^0.2.1",
+        "@google/genai": "^1.43.0",
+        "@google/generative-ai": "^0.24.1",
         "dotenv": "^16.4.5"
     },
     "devDependencies": {
-        "typescript": "^5.3.3",
-        "@types/node": "^20.11.24"
+        "@types/node": "^20.11.24",
+        "typescript": "^5.3.3"
     }
 }

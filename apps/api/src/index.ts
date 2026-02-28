@@ -21,7 +21,7 @@ app.get("/health", (req, res) => {
 });
 
 import { db, rssFeeds, articles } from "@packages/db";
-import { eq, desc, count, isNull, asc } from "drizzle-orm";
+import { eq, desc, count, isNull, asc, inArray } from "drizzle-orm";
 
 // ADMIN STATS ENDPOINT
 app.get("/admin/stats", async (req, res) => {
@@ -965,6 +965,91 @@ app.post("/settings", async (req, res) => {
   } catch (error) {
     console.error("Settings Error:", error);
     res.status(500).json({ error: "Failed to save setting" });
+  }
+});
+
+// RSS FEEDS CONFIG ENDPOINTS
+app.get("/rss-feeds", async (req, res) => {
+  try {
+    const list = await db.select().from(rssFeeds).orderBy(desc(rssFeeds.createdAt));
+    res.json(list);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch feeds" });
+  }
+});
+
+app.post("/rss-feeds", async (req, res) => {
+  try {
+    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo } = req.body;
+    if (!url || !source) return res.status(400).json({ error: "URL and Source are required" });
+
+    const newFeed = await db.insert(rssFeeds).values({
+      url, source, category,
+      contentSelector, excludeSelector,
+      titleSelector, descriptionSelector,
+      autoSeo: !!autoSeo,
+      isActive: true
+    }).returning();
+    res.json(newFeed[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to create feed" });
+  }
+});
+
+app.put("/rss-feeds/:id", async (req, res) => {
+  try {
+    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo } = req.body;
+    await db.update(rssFeeds)
+      .set({
+        url, source, category,
+        contentSelector, excludeSelector,
+        titleSelector, descriptionSelector,
+        autoSeo: !!autoSeo
+      })
+      .where(eq(rssFeeds.id, Number(req.params.id)));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update feed" });
+  }
+});
+
+app.delete("/rss-feeds/:id", async (req, res) => {
+  try {
+    await db.delete(rssFeeds).where(eq(rssFeeds.id, Number(req.params.id)));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete feed" });
+  }
+});
+
+// TOGGLE FEED
+app.patch("/rss-feeds/:id/toggle", async (req, res) => {
+  try {
+    const { isActive } = req.body;
+    await db.update(rssFeeds)
+      .set({ isActive })
+      .where(eq(rssFeeds.id, Number(req.params.id)));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to toggle feed" });
+  }
+});
+
+// BULK TOGGLE FEEDS
+app.post("/rss-feeds/bulk-toggle", async (req, res) => {
+  try {
+    const { ids, isActive } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "Missing or invalid ids" });
+    }
+
+    await db.update(rssFeeds)
+      .set({ isActive })
+      .where(inArray(rssFeeds.id, ids));
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to bulk toggle feeds" });
   }
 });
 

@@ -1,9 +1,10 @@
 import { db, rssFeeds, articles } from "@packages/db";
+import { eq } from "drizzle-orm";
 
 export async function syncAllFeeds() {
-    console.log("🔄 [SyncService] Syncing all feeds...");
+    console.log("🔄 [SyncService] Syncing all active feeds...");
     try {
-        const feeds = await db.select().from(rssFeeds);
+        const feeds = await db.select().from(rssFeeds).where(eq(rssFeeds.isActive, true));
 
         // Dynamic import to avoid circular dependency issues
         const crawler = await import("@packages/crawler");
@@ -16,12 +17,25 @@ export async function syncAllFeeds() {
                 const items = await crawler.fetchFeed(feed.url);
 
                 for (const item of items) {
-                    // Check duplicate
+                    // 1. Time filter check (Skip if older than 3 days)
+                    const pubDate = item.pubDate ? new Date(item.pubDate) : new Date();
+                    const threeDaysAgo = new Date();
+                    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+                    if (pubDate < threeDaysAgo) {
+                        console.log(`⏩ [SyncService] Skipping old article (Date: ${pubDate.toISOString()}): ${item.title?.substring(0, 30)}`);
+                        continue;
+                    }
+
+                    // 2. Check duplicate
                     const existing = await db.query.articles.findFirst({
                         where: (a: any, { eq }: any) => eq(a.sourceUrl, item.link)
                     });
 
-                    if (existing) continue;
+                    if (existing) {
+                        console.log(`⏩ [SyncService] Skipping duplicate: ${item.title?.substring(0, 30)}`);
+                        continue;
+                    }
 
                     // New article
                     const baseSlug = item.title ? slugifyStr(item.title) : "untitled";
@@ -43,6 +57,7 @@ export async function syncAllFeeds() {
                         summary: scrapedDesc || (item as any).contentSnippet || "",
                         contentAi: fullContent,
                         thumbnail: (item as any).thumbnail || scrapedThumbnail || null,
+                        sourceUrl: item.link, // FIX CRITICAL DUPLICATE BUG
                         category: feed.category,
                         publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
                         status: "PENDING" // Wait for AI & Telegram Approval
