@@ -26,7 +26,7 @@ app.get("/version", (req, res) => {
 });
 
 import { db, rssFeeds, articles } from "@packages/db";
-import { eq, desc, count, isNull, asc, inArray } from "drizzle-orm";
+import { eq, desc, count, isNull, asc, inArray, sql } from "drizzle-orm";
 
 app.get("/debug-update", async (req, res) => {
   try {
@@ -1063,7 +1063,7 @@ app.post("/rss-feeds", async (req, res) => {
       contentSelector, excludeSelector,
       titleSelector, descriptionSelector,
       autoSeo: !!autoSeo,
-      crawlMinute: parsedMinute,
+      crawlMinute: sql`${parsedMinute}`,
     };
     console.log(`  - Insert Object keys:`, Object.keys(insertData));
 
@@ -1094,7 +1094,7 @@ app.put("/rss-feeds/:id", async (req, res) => {
       contentSelector, excludeSelector,
       titleSelector, descriptionSelector,
       autoSeo: !!autoSeo,
-      crawlMinute: parsedMinute,
+      crawlMinute: sql`${parsedMinute}`,
     };
 
     console.log(`  - Update Object keys:`, Object.keys(updateData));
