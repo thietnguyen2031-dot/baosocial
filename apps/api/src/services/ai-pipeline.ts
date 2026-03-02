@@ -1,8 +1,8 @@
 
-import { db, articles, systemSettings } from "@packages/db";
+import { db, articles, systemSettings, rssFeeds } from "@packages/db";
 import { eq } from "drizzle-orm";
 import { rewriteContent, generateSEOSuggestions } from "@packages/ai";
-import { notifyNewArticle } from "./telegram-bot"; // Will implement next
+import { notifyNewArticle } from "./telegram-bot";
 
 export async function processNewArticle(articleId: number) {
     console.log(`🤖 [AI Pipeline] Processing Article ID: ${articleId}...`);
@@ -18,77 +18,82 @@ export async function processNewArticle(articleId: number) {
             return;
         }
 
-        // 2. Fetch API Keys
-        const keySetting = await db.query.systemSettings.findFirst({
-            where: (s, { eq }) => eq(s.key, "gemini_api_keys")
-        });
+        // 2. Fetch Settings (API Keys + Telegram Mode)
+        const [keySetting, telegramSetting] = await Promise.all([
+            db.query.systemSettings.findFirst({ where: (s, { eq }) => eq(s.key, "gemini_api_keys") }),
+            db.query.systemSettings.findFirst({ where: (s, { eq }) => eq(s.key, "telegram_approval_enabled") })
+        ]);
+
+        const isTelegramApproval = telegramSetting?.value === "true";
 
         let keys: string[] = [];
-        if (keySetting && keySetting.value) {
+        if (keySetting?.value) {
             keys = keySetting.value.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
         }
 
-        if (keys.length === 0) {
-            console.warn("⚠️ [AI Pipeline] No Gemini API keys found. Skipping AI processing.");
-            // Still notify Telegram even if AI fails? Yes.
-            await notifyNewArticle(article);
-            return;
-        }
-
-        // 3. Rewrite Content (if content exists)
+        // 3. Determine if this feed has autoSeo ON
+        // If no keys, skip AI but still handle Telegram/status
+        let aiSuccess = false;
         let newContent = article.contentAi || "";
-        if (article.contentAi) {
-            console.log("✍️ [AI Pipeline] Rewriting content...");
-            try {
-                newContent = await rewriteContent(article.contentAi, keys);
-            } catch (e) {
-                console.error("❌ [AI Pipeline] Rewrite failed:", e);
-                // Continue with original content
-            }
-        }
+        let seoUpdate: Record<string, any> = {};
 
-        // 4. Generate SEO (if title/content exists)
-        let seoUpdate = {};
-        if (article.title && newContent) {
-            console.log("🎯 [AI Pipeline] Generating SEO...");
+        if (keys.length === 0) {
+            console.warn("⚠️ [AI Pipeline] No Gemini API keys found. Skipping AI.");
+        } else if (!article.contentAi || article.contentAi.length < 50) {
+            console.warn(`⚠️ [AI Pipeline] Article ${articleId} has no/short content. Skipping AI.`);
+        } else {
+            // 4. Run Auto SEO (rewrite + SEO in one call = cheaper)
+            console.log("🎯 [AI Pipeline] Running Auto SEO...");
             try {
-                const seo = await generateSEOSuggestions(article.title, newContent, keys);
+                const seo = await generateSEOSuggestions(article.title, article.contentAi, keys);
+                newContent = seo.rewrittenContent || newContent;
                 seoUpdate = {
+                    title: seo.suggestedTitle,
                     seoTitle: seo.suggestedTitle,
                     seoDescription: seo.metaDescription,
-                    focusKeyword: '', // Not returned by new AI prompt, leave blank or add to prompt later
-                    slug: seo.slug // Auto-update slug? Maybe risky if external links rely on it? 
-                    // But for new articles it is fine.
-                    // The crawler sync logic sets a timestamp-based slug initially.
-                    // SEO slug is better.
+                    slug: seo.slug,
+                    summary: seo.metaDescription,
                 };
+                aiSuccess = true;
+                console.log(`✅ [AI Pipeline] AI SEO done: "${seo.suggestedTitle.substring(0, 50)}"`);
             } catch (e) {
-                console.error("❌ [AI Pipeline] SEO generation failed:", e);
+                console.error("❌ [AI Pipeline] AI SEO failed:", e);
             }
         }
 
-        // 5. Update DB
+        // 5. Determine final status
+        // - Telegram = ON → always PENDING (wait for manual approval)
+        // - Telegram = OFF → PUBLISHED if AI succeeded, PENDING if AI failed
+        const newStatus = isTelegramApproval
+            ? "PENDING"
+            : (aiSuccess ? "PUBLISHED" : "PENDING");
+
+        console.log(`📋 [AI Pipeline] Status → ${newStatus} (telegram: ${isTelegramApproval}, aiSuccess: ${aiSuccess})`);
+
+        // 6. Update DB
         await db.update(articles)
             .set({
                 contentAi: newContent,
                 ...seoUpdate,
-                // Status remains PENDING until Telegram approval
+                status: newStatus,
+                publishedAt: newStatus === "PUBLISHED" ? new Date() : article.publishedAt,
             })
             .where(eq(articles.id, articleId));
 
-        console.log("✅ [AI Pipeline] Article updated with AI content.");
+        console.log(`✅ [AI Pipeline] Article ${articleId} updated → ${newStatus}`);
 
-        // 6. Notify Telegram
-        // Fetch updated article to send correct data
-        const updatedArticle = await db.query.articles.findFirst({
-            where: (a, { eq }) => eq(a.id, articleId)
-        });
-
-        if (updatedArticle) {
-            await notifyNewArticle(updatedArticle);
+        // 7. Notify Telegram (if enabled, for approval flow)
+        if (isTelegramApproval) {
+            const updatedArticle = await db.query.articles.findFirst({
+                where: (a, { eq }) => eq(a.id, articleId)
+            });
+            if (updatedArticle) {
+                await notifyNewArticle(updatedArticle);
+            }
         }
 
     } catch (error) {
         console.error("❌ [AI Pipeline] Critical Error:", error);
     }
 }
+

@@ -11,6 +11,10 @@ interface KeyState {
     disabledUntil: number;
     gemini3ExhaustedUntil: number;
     gemini25ExhaustedUntil: number;
+    // Actual usage counters (reset daily at 15:00 GMT+7)
+    gemini3UsedToday: number;
+    gemini25UsedToday: number;
+    usageResetAt: number; // Timestamp when counters were last reset
 }
 const keyStates = new Map<string, KeyState>();
 
@@ -25,8 +29,26 @@ function getNextResetTimeMs(): number {
 }
 
 async function acquireKey(validKeys: string[]): Promise<string> {
+    const now = Date.now();
     validKeys.forEach(k => {
-        if (!keyStates.has(k)) keyStates.set(k, { lastUsed: 0, inUse: false, disabledUntil: 0, gemini3ExhaustedUntil: 0, gemini25ExhaustedUntil: 0 });
+        if (!keyStates.has(k)) {
+            keyStates.set(k, {
+                lastUsed: 0, inUse: false, disabledUntil: 0,
+                gemini3ExhaustedUntil: 0, gemini25ExhaustedUntil: 0,
+                gemini3UsedToday: 0, gemini25UsedToday: 0,
+                usageResetAt: getNextResetTimeMs() - 86400000 // yesterday's reset
+            });
+        }
+        // Reset daily usage counters if past reset time
+        const state = keyStates.get(k)!;
+        const nextReset = getNextResetTimeMs();
+        if (state.usageResetAt < nextReset - 86400000 || now >= state.usageResetAt) {
+            state.gemini3UsedToday = 0;
+            state.gemini25UsedToday = 0;
+            state.usageResetAt = nextReset;
+            state.gemini3ExhaustedUntil = 0;
+            state.gemini25ExhaustedUntil = 0;
+        }
     });
 
     while (true) {
@@ -77,33 +99,44 @@ function releaseKey(key: string, targetModel?: string, error?: any) {
     const state = keyStates.get(key);
     if (state) {
         state.inUse = false;
-        state.lastUsed = Date.now(); // Start cooldown AFTER it finishes
+        state.lastUsed = Date.now();
 
-        // Handle Quota and Rate Limit Errors
         if (error) {
             const msg = error.message || "";
             if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED")) {
                 const nextReset = getNextResetTimeMs();
-
                 if (targetModel && targetModel.includes("gemini-3")) {
                     state.gemini3ExhaustedUntil = nextReset;
-                    console.log(`🛑 [AI] Key [${key}] exhausted for ${targetModel}. Disabled until 15:00 GMT+7.`);
+                    state.gemini3UsedToday = ARTICLES_PER_MODEL_PER_DAY; // Mark as fully used
+                    console.log(`🛑 [AI] Key exhausted for ${targetModel}. Until 15:00 GMT+7.`);
                 } else if (targetModel && targetModel.includes("gemini-2.5")) {
                     state.gemini25ExhaustedUntil = nextReset;
-                    console.log(`🛑 [AI] Key [${key}] exhausted for ${targetModel}. Disabled until 15:00 GMT+7.`);
+                    state.gemini25UsedToday = ARTICLES_PER_MODEL_PER_DAY;
+                    console.log(`🛑 [AI] Key exhausted for ${targetModel}. Until 15:00 GMT+7.`);
                 } else {
-                    let waitMs = 60000; // Default 1 minute penalty for 429
-                    // Try to extract retry delay from error message (e.g. "Please retry in 46.58s")
+                    let waitMs = 60000;
                     const retryMatch = msg.match(/retry in ([\d\.]+)s/i);
-                    if (retryMatch && retryMatch[1]) {
-                        waitMs = (parseFloat(retryMatch[1]) + 2) * 1000; // Add 2s padding
-                    }
+                    if (retryMatch?.[1]) waitMs = (parseFloat(retryMatch[1]) + 2) * 1000;
                     state.disabledUntil = Date.now() + waitMs;
-                    console.log(`⏳ [AI] Key [${key}] rate limited. Disabled for ${Math.round(waitMs / 1000)}s.`);
+                    console.log(`⏳ [AI] Key rate limited for ${Math.round(waitMs / 1000)}s.`);
                 }
             } else {
                 state.disabledUntil = Date.now() + 60000;
-                console.log(`⏳ [AI] Key [${key}] errored (non-quota). Disabled for 60s.`);
+            }
+        } else if (targetModel) {
+            // SUCCESS: increment actual usage counter
+            if (targetModel.includes("gemini-3")) {
+                state.gemini3UsedToday = (state.gemini3UsedToday || 0) + 1;
+                if (state.gemini3UsedToday >= ARTICLES_PER_MODEL_PER_DAY) {
+                    state.gemini3ExhaustedUntil = getNextResetTimeMs();
+                    console.log(`⚠️ [AI] Key hit daily limit for ${targetModel} (${ARTICLES_PER_MODEL_PER_DAY} articles).`);
+                }
+            } else if (targetModel.includes("gemini-2.5")) {
+                state.gemini25UsedToday = (state.gemini25UsedToday || 0) + 1;
+                if (state.gemini25UsedToday >= ARTICLES_PER_MODEL_PER_DAY) {
+                    state.gemini25ExhaustedUntil = getNextResetTimeMs();
+                    console.log(`⚠️ [AI] Key hit daily limit for ${targetModel} (${ARTICLES_PER_MODEL_PER_DAY} articles).`);
+                }
             }
         }
     }
@@ -196,7 +229,7 @@ export async function rewriteContent(content: string, apiKeys: string[] = []): P
                 .trim();
 
             console.log(`✅ [AI] Success with key: [${key}] - Model: ${targetModel}`);
-            releaseKey(key);
+            releaseKey(key, targetModel); // Pass model to track usage
             return html;
         } catch (error: any) {
             console.error(`⚠️ [AI] Key [${key}] - Model: ${targetModel} failed:`, error.message);
@@ -348,7 +381,7 @@ export async function generateSEOSuggestions(
                 slug: parsed.slug
             });
 
-            releaseKey(key);
+            releaseKey(key, targetModel); // Pass model to track usage
             return parsed;
         } catch (error: any) {
             console.error(`⚠️ [AI SEO] Key [${key}] - Model: ${targetModel} failed:`, error.message);
@@ -375,6 +408,8 @@ export function getQuotaStatus(apiKeys: string[]) {
                 keySuffix: `...${key.slice(-6)}`,
                 gemini3Available: true,
                 gemini25Available: true,
+                gemini3UsedToday: 0,
+                gemini25UsedToday: 0,
                 articlesRemaining: ARTICLES_PER_MODEL_PER_DAY * 2,
                 articlesTotal: ARTICLES_PER_MODEL_PER_DAY * 2,
                 nextResetAt: nextReset
@@ -385,14 +420,18 @@ export function getQuotaStatus(apiKeys: string[]) {
         const gemini3Available = !(state.gemini3ExhaustedUntil > 0 && now < state.gemini3ExhaustedUntil);
         const gemini25Available = !(state.gemini25ExhaustedUntil > 0 && now < state.gemini25ExhaustedUntil);
 
-        const availableModelCount = (gemini3Available ? 1 : 0) + (gemini25Available ? 1 : 0);
-        const articlesRemaining = availableModelCount * ARTICLES_PER_MODEL_PER_DAY;
+        // Real remaining = limit minus actual usage today
+        const gemini3Remaining = Math.max(0, ARTICLES_PER_MODEL_PER_DAY - (state.gemini3UsedToday || 0));
+        const gemini25Remaining = Math.max(0, ARTICLES_PER_MODEL_PER_DAY - (state.gemini25UsedToday || 0));
+        const articlesRemaining = (gemini3Available ? gemini3Remaining : 0) + (gemini25Available ? gemini25Remaining : 0);
 
         return {
             keyIndex: index + 1,
             keySuffix: `...${key.slice(-6)}`,
             gemini3Available,
             gemini25Available,
+            gemini3UsedToday: state.gemini3UsedToday || 0,
+            gemini25UsedToday: state.gemini25UsedToday || 0,
             articlesRemaining,
             articlesTotal: ARTICLES_PER_MODEL_PER_DAY * 2,
             nextResetAt: nextReset
