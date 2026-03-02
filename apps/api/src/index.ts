@@ -1077,11 +1077,18 @@ app.post("/rss-feeds", async (req, res) => {
       contentSelector, excludeSelector,
       titleSelector, descriptionSelector,
       autoSeo: !!autoSeo,
-      crawlMinute: sql`${parsedMinute}`,
     };
     console.log(`  - Insert Object keys:`, Object.keys(insertData));
 
-    const newFeed = await db.insert(rssFeeds).values(insertData).returning({ id: rssFeeds.id, crawlMinute: rssFeeds.crawlMinute });
+    // 1. Insert known schema fields
+    const newFeed = await db.insert(rssFeeds).values(insertData).returning();
+    const insertedId = newFeed[0].id;
+
+    // 2. Force set crawl_minute via SQL to bypass schema mapping cache error
+    await db.execute(sql`UPDATE rss_feeds SET crawl_minute = ${parsedMinute} WHERE id = ${insertedId}`);
+
+    // Attach to response
+    newFeed[0].crawlMinute = parsedMinute;
 
     console.log(`  - DB Result:`, newFeed);
 
@@ -1108,15 +1115,18 @@ app.put("/rss-feeds/:id", async (req, res) => {
       contentSelector, excludeSelector,
       titleSelector, descriptionSelector,
       autoSeo: !!autoSeo,
-      crawlMinute: sql`${parsedMinute}`,
     };
 
     console.log(`  - Update Object keys:`, Object.keys(updateData));
 
+    // 1. Update known fields via ORM
     const result = await db.update(rssFeeds)
       .set(updateData)
       .where(eq(rssFeeds.id, Number(req.params.id)))
-      .returning({ id: rssFeeds.id, crawlMinute: rssFeeds.crawlMinute });
+      .returning();
+
+    // 2. Force update crawl_minute via RAW SQL to bypass schema mapping missing column
+    await db.execute(sql`UPDATE rss_feeds SET crawl_minute = ${parsedMinute} WHERE id = ${Number(req.params.id)}`);
 
     console.log(`  - DB Result:`, result);
 
