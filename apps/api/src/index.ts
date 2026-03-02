@@ -30,21 +30,12 @@ import { eq, desc, count, isNull, asc, inArray, sql } from "drizzle-orm";
 
 app.get("/debug-update", async (req, res) => {
   try {
-    const updateData = { crawlMinute: 45, isActive: false };
-    const result = await db.update(rssFeeds)
-      .set(updateData)
-      .where(eq(rssFeeds.id, 3))
-      .returning();
-
-    // Also fetch row directly to see what DB actually saved
-    const row = await db.select().from(rssFeeds).where(eq(rssFeeds.id, 3));
-
-    res.json({
-      success: true,
-      updateDataPassed: updateData,
-      returningResult: result,
-      dbRow: row[0]
-    });
+    const columns = await db.execute(sql.raw(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'rss_feeds'
+        `));
+    res.json({ success: true, columns });
   } catch (e: any) {
     res.status(500).json({ error: e.message, stack: e.stack });
   }
