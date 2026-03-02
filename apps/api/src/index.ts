@@ -1133,7 +1133,7 @@ app.put("/rss-feeds/:id", async (req, res) => {
     console.log(`  - DB Result:`, result);
 
     setupPerFeedCrons(); // Re-schedule after updating feed
-    res.json({ success: true, updated: result });
+    res.json({ success: true, updated: result, debugQuery: rawQuery });
   } catch (error) {
     console.error(`[DEBUG PUT FEED ERROR]`, error);
     res.status(500).json({ error: "Failed to update feed" });
