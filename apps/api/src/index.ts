@@ -1030,19 +1030,29 @@ app.get("/rss-feeds", async (req, res) => {
 app.post("/rss-feeds", async (req, res) => {
   try {
     const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo, crawlMinute } = req.body;
-    if (!url || !source) return res.status(400).json({ error: "URL and Source are required" });
 
-    const newFeed = await db.insert(rssFeeds).values({
+    console.log(`[DEBUG POST FEED] received`);
+    console.log(`  - Raw payload crawlMinute:`, crawlMinute);
+
+    const parsedMinute = crawlMinute !== undefined ? parseInt(String(crawlMinute)) : 0;
+
+    const insertData = {
       url, source, category,
       contentSelector, excludeSelector,
       titleSelector, descriptionSelector,
       autoSeo: !!autoSeo,
-      crawlMinute: crawlMinute !== undefined ? parseInt(String(crawlMinute)) : 0,
-      isActive: true
-    }).returning();
+      crawlMinute: parsedMinute,
+    };
+    console.log(`  - Insert Object keys:`, Object.keys(insertData));
+
+    const newFeed = await db.insert(rssFeeds).values(insertData).returning({ id: rssFeeds.id, crawlMinute: rssFeeds.crawlMinute });
+
+    console.log(`  - DB Result:`, newFeed);
+
     setupPerFeedCrons(); // Re-schedule after adding feed
     res.json(newFeed[0]);
   } catch (error: any) {
+    console.error(`[DEBUG POST FEED ERROR]`, error);
     res.status(500).json({ error: error.message || "Failed to create feed" });
   }
 });
@@ -1050,18 +1060,34 @@ app.post("/rss-feeds", async (req, res) => {
 app.put("/rss-feeds/:id", async (req, res) => {
   try {
     const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo, crawlMinute } = req.body;
-    await db.update(rssFeeds)
-      .set({
-        url, source, category,
-        contentSelector, excludeSelector,
-        titleSelector, descriptionSelector,
-        autoSeo: !!autoSeo,
-        crawlMinute: crawlMinute !== undefined ? parseInt(String(crawlMinute)) : 0,
-      })
-      .where(eq(rssFeeds.id, Number(req.params.id)));
+
+    console.log(`[DEBUG PUT FEED] ID: ${req.params.id}`);
+    console.log(`  - Raw payload crawlMinute:`, crawlMinute);
+
+    const parsedMinute = crawlMinute !== undefined ? parseInt(String(crawlMinute)) : 0;
+    console.log(`  - Parsed crawlMinute:`, parsedMinute);
+
+    const updateData = {
+      url, source, category,
+      contentSelector, excludeSelector,
+      titleSelector, descriptionSelector,
+      autoSeo: !!autoSeo,
+      crawlMinute: parsedMinute,
+    };
+
+    console.log(`  - Update Object keys:`, Object.keys(updateData));
+
+    const result = await db.update(rssFeeds)
+      .set(updateData)
+      .where(eq(rssFeeds.id, Number(req.params.id)))
+      .returning({ id: rssFeeds.id, crawlMinute: rssFeeds.crawlMinute });
+
+    console.log(`  - DB Result:`, result);
+
     setupPerFeedCrons(); // Re-schedule after updating feed
-    res.json({ success: true });
+    res.json({ success: true, updated: result });
   } catch (error) {
+    console.error(`[DEBUG PUT FEED ERROR]`, error);
     res.status(500).json({ error: "Failed to update feed" });
   }
 });
