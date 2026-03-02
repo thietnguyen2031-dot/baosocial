@@ -1042,9 +1042,23 @@ app.post("/settings", async (req, res) => {
 // RSS FEEDS CONFIG ENDPOINTS
 app.get("/rss-feeds", async (req, res) => {
   try {
-    const list = await db.select().from(rssFeeds).orderBy(desc(rssFeeds.createdAt));
+    const list = await db.select({
+      id: rssFeeds.id,
+      url: rssFeeds.url,
+      source: rssFeeds.source,
+      category: rssFeeds.category,
+      contentSelector: rssFeeds.contentSelector,
+      excludeSelector: rssFeeds.excludeSelector,
+      titleSelector: rssFeeds.titleSelector,
+      descriptionSelector: rssFeeds.descriptionSelector,
+      autoSeo: rssFeeds.autoSeo,
+      isActive: rssFeeds.isActive,
+      createdAt: rssFeeds.createdAt,
+      crawlMinute: sql`crawl_minute`.mapWith(Number)
+    }).from(rssFeeds).orderBy(desc(rssFeeds.createdAt));
     res.json(list);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: "Failed to fetch feeds" });
   }
 });
