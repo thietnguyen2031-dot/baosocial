@@ -1116,24 +1116,20 @@ app.put("/rss-feeds/:id", async (req, res) => {
       contentSelector, excludeSelector,
       titleSelector, descriptionSelector,
       autoSeo: !!autoSeo,
+      crawlMinute: parsedMinute,
     };
 
-    console.log(`  - Update Object keys:`, Object.keys(updateData));
+    console.log(`  - Update Object keys:`, Object.keys(updateData), '| crawlMinute:', parsedMinute);
 
-    // 1. Update known fields via ORM
     const result = await db.update(rssFeeds)
       .set(updateData)
       .where(eq(rssFeeds.id, Number(req.params.id)))
       .returning();
 
-    // 2. Force update crawl_minute via RAW SQL to bypass schema mapping missing column
-    const rawQuery = `UPDATE rss_feeds SET crawl_minute = ${parsedMinute} WHERE id = ${Number(req.params.id)}`;
-    await db.execute(sql.raw(rawQuery));
-
-    console.log(`  - DB Result:`, result);
+    console.log(`  - DB Result crawlMinute:`, result[0]?.crawlMinute);
 
     setupPerFeedCrons(); // Re-schedule after updating feed
-    res.json({ success: true, updated: result, debugQuery: rawQuery });
+    res.json({ success: true, updated: result });
   } catch (error) {
     console.error(`[DEBUG PUT FEED ERROR]`, error);
     res.status(500).json({ error: "Failed to update feed" });
