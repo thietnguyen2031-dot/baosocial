@@ -1085,7 +1085,8 @@ app.post("/rss-feeds", async (req, res) => {
     const insertedId = newFeed[0].id;
 
     // 2. Force set crawl_minute via SQL to bypass schema mapping cache error
-    await db.execute(sql`UPDATE rss_feeds SET crawl_minute = ${parsedMinute} WHERE id = ${insertedId}`);
+    const rawQuery = `UPDATE rss_feeds SET crawl_minute = ${parsedMinute} WHERE id = ${insertedId}`;
+    await db.execute(sql.raw(rawQuery));
 
     // Attach to response
     newFeed[0].crawlMinute = parsedMinute;
@@ -1126,7 +1127,8 @@ app.put("/rss-feeds/:id", async (req, res) => {
       .returning();
 
     // 2. Force update crawl_minute via RAW SQL to bypass schema mapping missing column
-    await db.execute(sql`UPDATE rss_feeds SET crawl_minute = ${parsedMinute} WHERE id = ${Number(req.params.id)}`);
+    const rawQuery = `UPDATE rss_feeds SET crawl_minute = ${parsedMinute} WHERE id = ${Number(req.params.id)}`;
+    await db.execute(sql.raw(rawQuery));
 
     console.log(`  - DB Result:`, result);
 
