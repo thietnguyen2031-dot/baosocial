@@ -111,34 +111,9 @@ app.delete("/rss-feeds/:id", async (req, res) => {
   }
 });
 
-app.put("/rss-feeds/:id", async (req, res) => {
-  try {
-    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo } = req.body;
-    if (!url || !source || !category) return res.status(400).json({ error: "Missing fields" });
+// (Duplicate PUT /rss-feeds/:id removed — correct handler with crawlMinute is defined later)
 
-    // Update the feed
-    await db.update(rssFeeds)
-      .set({
-        url,
-        source,
-        category,
-        contentSelector: contentSelector || null,
-        excludeSelector: excludeSelector || null,
-        titleSelector: titleSelector || null,
-        descriptionSelector: descriptionSelector || null,
-        autoSeo: autoSeo || false
-      })
-      .where(eq(rssFeeds.id, Number(req.params.id)));
 
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error("❌ [API] PUT /rss-feeds Error:", error);
-    res.status(500).json({
-      error: error.message || "Failed to update feed",
-      details: JSON.stringify(error, Object.getOwnPropertyNames(error))
-    });
-  }
-});
 
 // Helper: Simple Slugify
 function slugify(text: string) {
