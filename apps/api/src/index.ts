@@ -20,6 +20,11 @@ app.get("/health", (req, res) => {
   res.send("OK");
 });
 
+// Version endpoint - confirms which build is running on Render
+app.get("/version", (req, res) => {
+  res.json({ version: "2026-03-02-crawlMinute-fix", deployedAt: new Date().toISOString() });
+});
+
 import { db, rssFeeds, articles } from "@packages/db";
 import { eq, desc, count, isNull, asc, inArray } from "drizzle-orm";
 
