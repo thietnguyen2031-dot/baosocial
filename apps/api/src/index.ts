@@ -28,6 +28,28 @@ app.get("/version", (req, res) => {
 import { db, rssFeeds, articles } from "@packages/db";
 import { eq, desc, count, isNull, asc, inArray } from "drizzle-orm";
 
+app.get("/debug-update", async (req, res) => {
+  try {
+    const updateData = { crawlMinute: 45, isActive: false };
+    const result = await db.update(rssFeeds)
+      .set(updateData)
+      .where(eq(rssFeeds.id, 3))
+      .returning();
+
+    // Also fetch row directly to see what DB actually saved
+    const row = await db.select().from(rssFeeds).where(eq(rssFeeds.id, 3));
+
+    res.json({
+      success: true,
+      updateDataPassed: updateData,
+      returningResult: result,
+      dbRow: row[0]
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
 // ADMIN STATS ENDPOINT
 app.get("/admin/stats", async (req, res) => {
   try {
