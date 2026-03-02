@@ -22,7 +22,7 @@ app.get("/health", (req, res) => {
 
 // Version endpoint - confirms which build is running on Render
 app.get("/version", (req, res) => {
-  res.json({ version: "2026-03-02-crawlMinute-fix", deployedAt: new Date().toISOString() });
+  res.json({ version: "2026-03-02-crawlMinute-fix-v5", deployedAt: new Date().toISOString() });
 });
 
 import { db, rssFeeds, articles } from "@packages/db";
