@@ -5,6 +5,8 @@ async function test() {
         console.log("Before:", target.crawlMinute);
 
         const payload = { ...target, crawlMinute: 31 };
+        console.log("Sending payload crawlMinute:", payload.crawlMinute);
+
         const res = await fetch(`https://baosocial-api.onrender.com/rss-feeds/${target.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -12,7 +14,8 @@ async function test() {
         });
 
         console.log("PUT status:", res.status);
-        console.log("PUT result:", await res.json());
+        const putResult = await res.json();
+        console.log("PUT result full:", JSON.stringify(putResult, null, 2));
 
         const listAfter = await fetch("https://baosocial-api.onrender.com/rss-feeds").then(r => r.json());
         const targetAfter = listAfter.find(f => f.id === 3);

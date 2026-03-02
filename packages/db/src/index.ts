@@ -11,6 +11,6 @@ if (!process.env.DATABASE_URL) {
 const connectionString = process.env.DATABASE_URL || "";
 debugger; // Trace
 console.log("🔌 [DB] Connection String:", connectionString ? "FOUND" : "MISSING");
-const client = postgres(connectionString);
+const client = postgres(connectionString, { prepare: false });
 export const db = drizzle(client, { schema });
 export * from "./schema";
