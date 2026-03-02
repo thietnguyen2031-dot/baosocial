@@ -30,12 +30,21 @@ import { eq, desc, count, isNull, asc, inArray, sql } from "drizzle-orm";
 
 app.get("/debug-update", async (req, res) => {
   try {
-    const columns = await db.execute(sql.raw(`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'rss_feeds'
-        `));
-    res.json({ success: true, columns });
+    const id = 3;
+    const parsedMinute = 57; // distinctive value
+    const rawQuery = `UPDATE rss_feeds SET crawl_minute = ${parsedMinute} WHERE id = ${id}`;
+
+    const execResult = await db.execute(sql.raw(rawQuery));
+
+    const row = await db.select().from(rssFeeds).where(eq(rssFeeds.id, id));
+
+    res.json({
+      success: true,
+      query: rawQuery,
+      execResult,
+      dbRow: row[0],
+      mappedCrawlMinute: row[0] ? (row[0] as any).crawl_minute : 'missing'
+    });
   } catch (e: any) {
     res.status(500).json({ error: e.message, stack: e.stack });
   }
