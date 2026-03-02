@@ -1005,10 +1005,6 @@ app.post("/settings", async (req, res) => {
       await db.insert(systemSettings).values({ key, value, description });
     }
 
-    if (key === "auto_crawl_interval_minutes") {
-      setupCronJob();
-    }
-
     res.json({ success: true });
   } catch (error) {
     console.error("Settings Error:", error);
@@ -1028,7 +1024,7 @@ app.get("/rss-feeds", async (req, res) => {
 
 app.post("/rss-feeds", async (req, res) => {
   try {
-    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo } = req.body;
+    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo, crawlMinute } = req.body;
     if (!url || !source) return res.status(400).json({ error: "URL and Source are required" });
 
     const newFeed = await db.insert(rssFeeds).values({
@@ -1036,8 +1032,10 @@ app.post("/rss-feeds", async (req, res) => {
       contentSelector, excludeSelector,
       titleSelector, descriptionSelector,
       autoSeo: !!autoSeo,
+      crawlMinute: crawlMinute !== undefined ? parseInt(String(crawlMinute)) : 0,
       isActive: true
     }).returning();
+    setupPerFeedCrons(); // Re-schedule after adding feed
     res.json(newFeed[0]);
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to create feed" });
@@ -1046,15 +1044,17 @@ app.post("/rss-feeds", async (req, res) => {
 
 app.put("/rss-feeds/:id", async (req, res) => {
   try {
-    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo } = req.body;
+    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo, crawlMinute } = req.body;
     await db.update(rssFeeds)
       .set({
         url, source, category,
         contentSelector, excludeSelector,
         titleSelector, descriptionSelector,
-        autoSeo: !!autoSeo
+        autoSeo: !!autoSeo,
+        crawlMinute: crawlMinute !== undefined ? parseInt(String(crawlMinute)) : 0,
       })
       .where(eq(rssFeeds.id, Number(req.params.id)));
+    setupPerFeedCrons(); // Re-schedule after updating feed
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to update feed" });
@@ -1064,6 +1064,7 @@ app.put("/rss-feeds/:id", async (req, res) => {
 app.delete("/rss-feeds/:id", async (req, res) => {
   try {
     await db.delete(rssFeeds).where(eq(rssFeeds.id, Number(req.params.id)));
+    setupPerFeedCrons(); // Re-schedule after deleting feed
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to delete feed" });
@@ -1077,6 +1078,7 @@ app.patch("/rss-feeds/:id/toggle", async (req, res) => {
     await db.update(rssFeeds)
       .set({ isActive })
       .where(eq(rssFeeds.id, Number(req.params.id)));
+    setupPerFeedCrons(); // Re-schedule after toggling
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to toggle feed" });
@@ -1095,6 +1097,7 @@ app.post("/rss-feeds/bulk-toggle", async (req, res) => {
       .set({ isActive })
       .where(inArray(rssFeeds.id, ids));
 
+    setupPerFeedCrons(); // Re-schedule after bulk toggle
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to bulk toggle feeds" });
@@ -1204,43 +1207,53 @@ app.post("/force-update-slugs", async (req, res) => {
 });
 
 
-// CRON JOB: Auto-sync
-let currentCronJob: any = null;
 
-export async function setupCronJob() {
-  if (currentCronJob) {
-    currentCronJob.stop();
-  }
+// PER-FEED CRON JOBS (minute-based scheduling)
+const feedCronJobs = new Map<number, any>();
+
+export async function setupPerFeedCrons() {
+  // Stop and clear all existing jobs
+  feedCronJobs.forEach(job => job.stop());
+  feedCronJobs.clear();
 
   try {
-    const intervalSetting = await db.query.systemSettings.findFirst({
-      where: (s, { eq }) => eq(s.key, "auto_crawl_interval_minutes")
-    });
+    const feeds = await db.select().from(rssFeeds).where(eq(rssFeeds.isActive, true));
 
-    const minutes = intervalSetting && intervalSetting.value ? parseInt(intervalSetting.value, 10) : 30;
-    const safeMinutes = (isNaN(minutes) || minutes < 5) ? 30 : minutes;
+    if (feeds.length === 0) {
+      console.log("⏰ [Cron] No active feeds to schedule.");
+      return;
+    }
 
-    console.log(`⏰ [Cron] Configuring auto-sync interval to ${safeMinutes} minutes...`);
+    for (const feed of feeds) {
+      const minute = feed.crawlMinute ?? 0;
+      const safeMinute = (isNaN(minute) || minute < 0 || minute > 59) ? 0 : minute;
 
-    currentCronJob = cron.schedule(`*/${safeMinutes} * * * *`, async () => {
-      console.log("⏰ [Cron] Starting auto-sync for all feeds...");
-      try {
-        const { syncAllFeeds } = await import("./services/sync-service");
-        await syncAllFeeds();
-        console.log("✅ [Cron] Auto-sync complete.");
-      } catch (error) {
-        console.error("❌ [Cron] Auto-sync failed:", error);
-      }
-    });
+      const job = cron.schedule(`${safeMinute} * * * *`, async () => {
+        console.log(`⏰ [Cron] Auto-crawl: "${feed.source}" (at :**${String(safeMinute).padStart(2, '0')} every hour)`);
+        try {
+          const { syncSingleFeed } = await import("./services/sync-service");
+          const count = await syncSingleFeed(feed.id);
+          console.log(`✅ [Cron] Feed "${feed.source}" synced ${count} new articles.`);
+        } catch (error) {
+          console.error(`❌ [Cron] Feed "${feed.source}" sync failed:`, error);
+        }
+      });
+
+      feedCronJobs.set(feed.id, job);
+      console.log(`⏰ [Cron] Scheduled "${feed.source}" at minute :${String(safeMinute).padStart(2, '0')} every hour`);
+    }
+
+    console.log(`⏰ [Cron] ${feeds.length} feed(s) scheduled.`);
   } catch (err) {
-    console.error("Failed to setup cron job", err);
+    console.error("❌ [Cron] Failed to setup per-feed crons:", err);
   }
 }
 
 // Initialize on startup
-setupCronJob();
+setupPerFeedCrons();
 
 app.listen(port, () => {
   console.log(`API running on http://localhost:${port}`);
-  console.log(`⏰ Cron job scheduled: */30 * * * *`);
+  console.log(`⏰ Per-feed cron scheduling initialized.`);
 });
+

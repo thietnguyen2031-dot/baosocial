@@ -43,6 +43,7 @@ export const rssFeeds = pgTable("rss_feeds", {
     descriptionSelector: text("description_selector"), // Custom CSS selector for Description
     autoSeo: boolean("auto_seo").default(false),
     isActive: boolean("is_active").default(true),
+    crawlMinute: integer("crawl_minute").default(0), // 0-59: minute of each hour to auto-crawl
     createdAt: timestamp("created_at").defaultNow(),
 });
 

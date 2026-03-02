@@ -105,25 +105,10 @@ export default function SettingsPage() {
                         </div>
 
                         <div className="pt-4 border-t border-slate-100">
-                            <h3 className="font-bold text-slate-800 mb-4">Cấu hình Crawler</h3>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Chu kỳ Auto-Crawl (Phút)</label>
-                            <div className="flex gap-2 text-sm text-slate-500 mb-2">
-                                Hệ thống sẽ tự động quét tin tức mới sau mỗi khoảng thời gian này.
-                            </div>
-                            <div className="flex gap-2">
-                                <input
-                                    type="number"
-                                    min="5"
-                                    value={autoCrawlInterval}
-                                    onChange={(e) => setAutoCrawlInterval(e.target.value)}
-                                    className="w-32 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 ring-blue-500 outline-none"
-                                />
-                                <button
-                                    onClick={() => handleSave("auto_crawl_interval_minutes", autoCrawlInterval, "Auto Crawl Interval (Minutes)")}
-                                    className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg hover:bg-blue-700 font-medium"
-                                >
-                                    Cập nhật
-                                </button>
+                            <h3 className="font-bold text-slate-800 mb-2">Cấu hình Crawler</h3>
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                                ⏰ <strong>Lịch crawl tự động</strong> hiện được cấu hình theo từng luồng tin riêng lẻ.<br />
+                                Vào trang <a href="/admin/crawler" className="underline font-semibold">Cấu hình Crawler</a> → sửa luồng → đặt "Phút crawl tự động" (0–59) cho từng luồng.
                             </div>
                         </div>
                     </div>
