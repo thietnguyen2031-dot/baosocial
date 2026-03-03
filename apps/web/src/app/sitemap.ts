@@ -1,5 +1,7 @@
 import { MetadataRoute } from 'next';
 
+export const revalidate = 3600; // Update every 1 hour
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://benthanhmedia.net';
 

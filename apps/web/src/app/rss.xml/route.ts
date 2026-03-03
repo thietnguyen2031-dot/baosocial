@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSettings } from '@/lib/api';
 
+export const revalidate = 3600; // Update every 1 hour
+
 export async function GET() {
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://benthanhmedia.net';
 
@@ -42,7 +44,6 @@ ${articles.map((article: any) => `    <item>
     return new NextResponse(feed, {
         headers: {
             'Content-Type': 'application/xml; charset=utf-8',
-            'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
         },
     });
 }
