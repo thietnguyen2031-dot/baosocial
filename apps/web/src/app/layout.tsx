@@ -15,9 +15,42 @@ const roboto = Roboto({
   display: "swap",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://benthanhmedia.net';
+
 export const metadata: Metadata = {
-  title: "BaoSocial - Tin tức thế hệ mới",
-  description: "Nền tảng tin tức tổng hợp thông minh",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'BaoSocial - Tin tức thế hệ mới',
+    template: '%s | BaoSocial',
+  },
+  description: 'Nền tảng tin tức tổng hợp thông minh - cập nhật tin tức mới nhất từ các nguồn uy tín.',
+  openGraph: {
+    type: 'website',
+    locale: 'vi_VN',
+    url: SITE_URL,
+    siteName: 'BaoSocial',
+    title: 'BaoSocial - Tin tức thế hệ mới',
+    description: 'Nền tảng tin tức tổng hợp thông minh - cập nhật tin tức mới nhất từ các nguồn uy tín.',
+    images: [`${SITE_URL}/og-default.jpg`],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    site: '@baosocial',
+    creator: '@baosocial',
+    title: 'BaoSocial - Tin tức thế hệ mới',
+    description: 'Nền tảng tin tức tổng hợp thông minh',
+    images: [`${SITE_URL}/og-default.jpg`],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
 };
 
 export default function RootLayout({
