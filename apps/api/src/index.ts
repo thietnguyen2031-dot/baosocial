@@ -20,35 +20,12 @@ app.get("/health", (req, res) => {
   res.send("OK");
 });
 
-// Version endpoint - confirms which build is running on Render
-app.get("/version", (req, res) => {
-  res.json({ version: "2026-03-02-crawlMinute-fix-v5", deployedAt: new Date().toISOString() });
-});
+
 
 import { db, rssFeeds, articles } from "@packages/db";
 import { eq, desc, count, isNull, asc, inArray, sql } from "drizzle-orm";
 
-app.get("/debug-update", async (req, res) => {
-  try {
-    const id = 3;
-    const parsedMinute = 57; // distinctive value
-    const rawQuery = `UPDATE rss_feeds SET crawl_minute = ${parsedMinute} WHERE id = ${id}`;
 
-    const execResult = await db.execute(sql.raw(rawQuery));
-
-    const row = await db.select().from(rssFeeds).where(eq(rssFeeds.id, id));
-
-    res.json({
-      success: true,
-      query: rawQuery,
-      execResult,
-      dbRow: row[0],
-      mappedCrawlMinute: row[0] ? (row[0] as any).crawl_minute : 'missing'
-    });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message, stack: e.stack });
-  }
-});
 
 // ADMIN STATS ENDPOINT
 app.get("/admin/stats", async (req, res) => {
@@ -68,50 +45,8 @@ app.get("/admin/stats", async (req, res) => {
   }
 });
 
-app.get("/rss-feeds", async (req, res) => {
-  try {
-    const feeds = await db.select().from(rssFeeds);
-    res.json(feeds);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch feeds" });
-  }
-});
+// (duplicate early GET/POST/DELETE /rss-feeds stubs removed — full handlers with crawlMinute are below)
 
-app.post("/rss-feeds", async (req, res) => {
-  try {
-    const { url, source, category, contentSelector, excludeSelector, titleSelector, descriptionSelector, autoSeo } = req.body;
-    if (!url || !source || !category) return res.status(400).json({ error: "Missing fields" });
-
-    const newFeed = await db.insert(rssFeeds).values({
-      url,
-      source,
-      category,
-      contentSelector: contentSelector || null,
-      excludeSelector: excludeSelector || null,
-      titleSelector: titleSelector || null,
-      descriptionSelector: descriptionSelector || null,
-      autoSeo: autoSeo || false
-    }).returning();
-    res.json(newFeed[0]);
-  } catch (error: any) {
-    console.error("❌ [API] POST /rss-feeds Error:", error);
-    res.status(500).json({
-      error: error.message || "Failed to add feed",
-      details: JSON.stringify(error, Object.getOwnPropertyNames(error))
-    });
-  }
-});
-
-app.delete("/rss-feeds/:id", async (req, res) => {
-  try {
-    await db.delete(rssFeeds).where(eq(rssFeeds.id, Number(req.params.id)));
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to delete feed" });
-  }
-});
-
-// (Duplicate PUT /rss-feeds/:id removed — correct handler with crawlMinute is defined later)
 
 
 
