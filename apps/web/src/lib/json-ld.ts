@@ -17,7 +17,7 @@ export function generateJsonLd(article: any): WithContext<Article> {
             name: 'BaoSocial',
             logo: {
                 '@type': 'ImageObject',
-                url: 'http://localhost:3000/logo.png'
+                url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://benthanhmedia.net'}/logo.png`
             }
         },
         description: article.summary

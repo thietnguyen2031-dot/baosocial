@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-    const baseUrl = 'http://localhost:3000'; // Replace with env var in prod
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://benthanhmedia.net';
 
     // Fetch critical articles
     // In production, fetch ALL slugs or top 1000
