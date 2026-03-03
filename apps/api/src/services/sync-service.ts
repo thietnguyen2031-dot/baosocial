@@ -8,34 +8,43 @@ async function syncFeed(feed: typeof rssFeeds.$inferSelect) {
         const crawler = await import("@packages/crawler");
         const items = await crawler.fetchFeed(feed.url);
 
+        // Pre-fetch existing sourceUrls to avoid N+1 DB queries per article
+        const { sql } = await import("drizzle-orm");
+        const existingRows = await db.execute(sql.raw(
+            `SELECT source_url FROM articles WHERE source_url IS NOT NULL`
+        )) as any[];
+        const existingUrls = new Set(existingRows.map((r: any) => r.source_url));
+
         let totalNew = 0;
 
         for (const item of items) {
-            // 1. Time filter check (Skip if older than 3 days)
+            if (!item.link) continue;
+
+            // 1. Time filter (skip if older than 3 days)
             const pubDate = item.pubDate ? new Date(item.pubDate) : new Date();
             const threeDaysAgo = new Date();
             threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
             if (pubDate < threeDaysAgo) {
-                console.log(`⏩ [SyncService] Skipping old article (Date: ${pubDate.toISOString()}): ${item.title?.substring(0, 30)}`);
+                console.log(`⏩ [SyncService] Skipping old article: ${item.title?.substring(0, 40)}`);
                 continue;
             }
 
-            // 2. Check duplicate
-            const existing = await db.query.articles.findFirst({
-                where: (a: any, { eq }: any) => eq(a.sourceUrl, item.link)
-            });
-
-            if (existing) {
-                console.log(`⏩ [SyncService] Skipping duplicate: ${item.title?.substring(0, 30)}`);
+            // 2. Duplicate check by sourceUrl (exact match)
+            const normalizedLink = item.link.replace(/\/$/, "").split("?")[0]; // strip trailing slash & query params
+            if (existingUrls.has(item.link) || existingUrls.has(normalizedLink)) {
+                console.log(`⏩ [SyncService] Skipping duplicate URL: ${item.title?.substring(0, 40)}`);
                 continue;
             }
 
-            // New article
+            // New article — add to local set immediately to prevent duplicates within same batch
+            existingUrls.add(item.link);
+            existingUrls.add(normalizedLink);
+
+            // 3. Fetch full content
             const baseSlug = item.title ? slugifyStr(item.title) : "untitled";
             const uniqueSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
 
-            // Fetch content
             const contentResult = await crawler.fetchContent(item.link, {
                 contentSelector: feed.contentSelector,
                 excludeSelector: feed.excludeSelector,
@@ -45,7 +54,7 @@ async function syncFeed(feed: typeof rssFeeds.$inferSelect) {
 
             const { content: fullContent, title: scrapedTitle, description: scrapedDesc, thumbnail: scrapedThumbnail } = contentResult;
 
-            // FIX: Treat empty string as falsy for thumbnail selection
+            // 4. Thumbnail: RSS image → scraped OG image → null
             const itemThumb = (item as any).thumbnail;
             const finalThumbnail = (itemThumb && itemThumb.trim() !== '')
                 ? itemThumb
@@ -61,7 +70,7 @@ async function syncFeed(feed: typeof rssFeeds.$inferSelect) {
                 thumbnail: finalThumbnail,
                 sourceUrl: item.link,
                 category: feed.category,
-                publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
+                publishedAt: pubDate,
                 status: "PENDING"
             }).returning();
 
@@ -74,6 +83,8 @@ async function syncFeed(feed: typeof rssFeeds.$inferSelect) {
 
             totalNew++;
         }
+
+        console.log(`✅ [SyncService] Feed "${feed.source}" done: ${totalNew} new article(s).`);
         return totalNew;
     } catch (e) {
         console.error(`❌ [SyncService] Error fetching feed ${feed.source}:`, e);

@@ -53,24 +53,15 @@ export default async function Home() {
     author: item.source || 'Ban Biên Tập'
   });
 
-  // Flexible Category Filter
-  // 1. Select Featured (Top 5)
+  // Top 5 latest articles for featured section
   const featured = allNews.slice(0, 5).map(mapNews);
-
-  // Keep track of featured IDs so we can OPTIONALLY exclude them if we have enough news
-  const featuredIds = new Set(featured.map((f: any) => f.id));
 
   // Helper to filter by exact or partial category name
   const getNewsForCategory = (catName: string, limit: number) => {
-    let filtered = allNews.filter((item: any) => {
+    const filtered = allNews.filter((item: any) => {
       const cat = (item.category || "").toLowerCase();
       return cat.includes(catName.toLowerCase()) || catName.toLowerCase().includes(cat);
     });
-
-    // If we have plenty of news, exclude the featured ones so we don't duplicate
-    if (filtered.length > limit + 3) {
-      filtered = filtered.filter((item: any) => !featuredIds.has(item.id));
-    }
 
     return filtered.slice(0, limit).map(mapNews);
   };
