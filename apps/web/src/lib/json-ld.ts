@@ -1,6 +1,6 @@
 import { Article, WithContext } from 'schema-dts';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://benthanhmedia.net';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.benthanhmedia.net';
 
 export function generateJsonLd(article: any): WithContext<Article> {
     return {

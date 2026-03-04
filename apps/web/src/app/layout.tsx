@@ -15,7 +15,7 @@ const roboto = Roboto({
   display: "swap",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://benthanhmedia.net';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.benthanhmedia.net';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

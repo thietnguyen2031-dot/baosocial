@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     const article = await getArticleBySlug(slug);
     if (!article) return { title: 'Không tìm thấy bài viết' };
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://benthanhmedia.net';
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.benthanhmedia.net';
     const articleUrl = `${siteUrl}/tin/${slug}`;
     const title = article.seoTitle || article.title;
     const description = article.seoDescription || article.summary;
