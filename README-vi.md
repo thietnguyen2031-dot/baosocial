@@ -90,6 +90,10 @@ TELEGRAM_ADMIN_CHAT_ID="your-chat-id"
 
 # Webhook Auto-share Social (Make.com, Zapier) - Có thể điền trong Admin UI
 # SOCIAL_WEBHOOK_URL="https://hook.make.com/xxxxxx"
+
+# Cấu hình Google Drive Upload Ảnh Hàng Loạt
+# GOOGLE_DRIVE_FOLDER_ID="your_folder_id"
+# GOOGLE_DRIVE_CREDENTIALS='{"type":"service_account","project_id":"..."}'
 ```
 
 ### Bước 4: Khởi Tạo Cơ Sở Dữ Liệu
@@ -114,6 +118,21 @@ pnpm dev
 2. Chọn module nhận dữ liệu là **Webhook -> Custom Webhook**, và sao chép đoạn URL Webhook được sinh ra.
 3. Vào trang Quản trị Admin của website -> `Cài đặt hệ thống` -> Tạo 1 Key cấu hình: `social_webhook_url`, Paste URL vừa copy vào ô Value.
 4. Trở lại Make.com, kết nối nối Module Webhook đó sang Module Facebook Pages hoặc Twitter (X) là nội dung của bạn sẽ tự động lên sóng.
+
+---
+
+## 🗂️ Hướng Dẫn Cấu Hình Google Drive API (Chống mất ảnh do băng thông)
+Hệ thống sử dụng Service Account của Google Cloud để tự động tải và lưu danh sách ảnh của tin tức.
+1. Truy cập **Google Cloud Console**, tạo một dự án mới.
+2. Tại thanh tìm kiếm, gõ **Google Drive API** và bấm **Enable (Bật)**.
+3. Chuyển đến mục **APIs & Services > Credentials (Thông tin xác thực)**.
+4. Bấm **Create Credentials > Service Account**, điền tên tùy ý.
+5. Khi Service Account được tạo, chuyển sang tab **Keys > Add Key > Create New Key > JSON**. Tải file JSON này về.
+6. Mở file JSON bằng Text Editor (Notepad), copy toàn bộ nội dung và dán vào biến môi trường `GOOGLE_DRIVE_CREDENTIALS`.
+7. Truy cập vào **Google Drive cá nhân**, tạo 1 thư mục tên _"HinhAnh_BaoSocial"_.
+8. Lấy Email của Service Account (có đuôi là `@<project-id>.iam.gserviceaccount.com`), **Chia sẻ (Share)** thư mục vừa tạo cho Email này với quyền **Người chỉnh sửa (Editor)**.
+9. Đặt quyền truy cập chung của thư mục thành: **Bất kỳ ai có liên kết (Anyone with the link)**.
+10. Copy Dãy ID của thư mục đó trên thanh URL điền vào biến `GOOGLE_DRIVE_FOLDER_ID`.
 
 ---
 

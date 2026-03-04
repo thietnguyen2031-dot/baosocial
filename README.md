@@ -85,6 +85,10 @@ NEXT_PUBLIC_SITE_URL="http://localhost:3000"
 
 # Auto-share Social Webhook (Make.com, Zapier) - Also configurable via Admin UI Dashboard
 # SOCIAL_WEBHOOK_URL="https://hook.make.com/xxxxxx"
+
+# Google Drive Cloud Storage (To combat Hot-linking & Bandwidth constraints)
+# GOOGLE_DRIVE_FOLDER_ID="your_folder_id"
+# GOOGLE_DRIVE_CREDENTIALS='{"type":"service_account","project_id":"..."}'
 ```
 
 ### Step 4: Bootstrap Database Schema
@@ -112,4 +116,17 @@ To automatically share articles online immediately after publishing processing f
 
 ---
 
-> NOTE: This is a living document. Functionalities are systematically evolving concurrently with technological SEO thresholds. 
+## 🗂️ Configuring Google Drive Service Account (Image Storage)
+The system leverages a Google Cloud Service Account to autonomously fetch remote images and upload them securely.
+1. Head over to the **Google Cloud Console**, and bootstrap a new project.
+2. Search for the **Google Drive API** in the navigation bar and enable it.
+3. Proceed to **APIs & Services > Credentials**.
+4. Click **Create Credentials > Service Account**, and formulate a name.
+5. Create a JSON Key (`Keys > Add Key > Create New Key > JSON`) and download it.
+6. Open the JSON file in any Text Editor, copy the entire payload, and paste it into the `GOOGLE_DRIVE_CREDENTIALS` environment variable footprint.
+7. Switch to your main **Google Drive** dashboard and create a container folder (e.g., _"BaoSocial_Imgs"_).
+8. Copy the Service Account email (`@<project-id>.iam.gserviceaccount.com`), **Share** your new Google Drive folder to this email with **Editor** permissions.
+9. Critically, change the master permission of your Drive folder to **"Anyone with the link"**.
+10. Extract the Folder ID payload from your browser's URL tab and apply it to the `GOOGLE_DRIVE_FOLDER_ID` environment parameter.
+
+---
