@@ -54,26 +54,64 @@ app.get("/debug/imgbb", async (req, res) => {
 });
 
 
-// DEBUG INTERNAL LINKER - Test link injection for an article
+// DEBUG INTERNAL LINKER - Full diagnostic endpoint
 app.get("/debug/linker/:slug", async (req, res) => {
   const { slug } = req.params;
   try {
-    const res2 = await fetch(`http://localhost:${port}/articles/by-slug/${slug}`);
-    const article = await res2.json();
-    if (!article || !article.contentAi) {
-      return res.json({ error: "Article not found or no content" });
+    // Step 1: Find the article
+    let article = await db.query.articles.findFirst({
+      where: (a, { eq }) => eq(a.slug, slug)
+    });
+    if (!article && !isNaN(Number(slug))) {
+      article = await db.query.articles.findFirst({
+        where: (a, { eq }) => eq(a.id, Number(slug))
+      });
     }
-    const linkCount = (article.contentAi.match(/href="\/tin\//g) || []).length;
-    return res.json({
+    if (!article) return res.status(404).json({ error: "Article not found" });
+
+    // Step 2: Build keyword dictionary (same logic as the linker)
+    const recentArticles = await db.query.articles.findMany({
+      where: (a, { eq, and, ne, isNotNull }) => and(
+        eq(a.status, "PUBLISHED"),
+        isNotNull(a.title),
+        ne(a.id, article!.id)
+      ),
+      orderBy: desc(articles.publishedAt),
+      columns: { slug: true, focusKeyword: true, title: true },
+      limit: 50
+    });
+
+    const linkDict = recentArticles
+      .map(a => {
+        const keyword = a.focusKeyword?.trim() || a.title?.split(' ').slice(0, 2).join(' ');
+        return keyword && a.slug ? { keyword, slug: a.slug } : null;
+      })
+      .filter((k): k is { keyword: string; slug: string } => !!k);
+
+    // Step 3: Test each keyword against content
+    const content = article.contentAi || '';
+    const matchResults = linkDict.map(({ keyword, slug: kSlug }) => ({
+      keyword,
+      slug: kSlug,
+      found: content.includes(keyword),
+    }));
+
+    const matched = matchResults.filter(r => r.found);
+
+    res.json({
+      articleId: article.id,
       title: article.title,
-      linkCount,
-      preview: article.contentAi.substring(0, 2000),
-      hasLinks: linkCount > 0
+      dictionarySize: linkDict.length,
+      keywords: linkDict.slice(0, 20).map(k => k.keyword), // first 20 keywords
+      matchedKeywords: matched,
+      matchCount: matched.length,
+      contentPreview: content.substring(0, 500),
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
+
 
 // BATCH IMAGE RE-MIGRATION: Re-upload old article images to ImgBB (no AI rerun needed)
 app.post("/admin/remigrate-images", async (req, res) => {
