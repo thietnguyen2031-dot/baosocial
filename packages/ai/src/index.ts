@@ -305,7 +305,7 @@ export async function generateSEOSuggestions(
     - Giữ nguyên số liệu, tên riêng, và sự kiện chính.
     - Định dạng HTML thuần túy (h2, h3, p, strong, ul, li, table).
     - BẮT BUỘC GIỮ NGUYÊN toàn bộ thẻ <img src="..."> (hình ảnh) trong bài viết gốc nếu có.
-    - BẮT BUỘC chèn chuyên mục <h3>Câu hỏi thường gặp (FAQ)</h3> ở gần cuối bài. Tự trích xuất 3-5 câu Hỏi - Đáp liên quan nhất để hỗ trợ SEO FAQ Schema. Dùng thẻ <p><strong>Hỏi:</strong></p><p>Đáp:</p> hoặc tương tự.
+    - BẮT BUỘC chèn chuyên mục <h3>Câu hỏi thường gặp (FAQ)</h3> ở gần cuối bài. Tự trích xuất 3-5 câu Hỏi - Đáp liên quan nhất để hỗ trợ SEO FAQ Schema. BẮT BUỘC thiết kế theo dạng Dropdown HTML: Dùng thẻ <details> và <summary> cho mỗi câu. VÍ DỤ: <details><summary><strong>Hỏi: [Nội dung câu hỏi]</strong></summary><p>Đáp: [Nội dung câu trả lời]</p></details>.
     - BẮT BUỘC chèn ĐOẠN MÃ HTML SAU vào DƯỚI CÙNG của bài viết (Dưới cả FAQ) nếu sourceUrl không rỗng:
       <p><em>Nguồn tham khảo: <a href="${sourceUrl}" target="_blank" rel="nofollow">Xem bài viết gốc</a></em></p>
     - Phải chia đoạn và có cấu trúc heading rõ ràng dễ đọc.
