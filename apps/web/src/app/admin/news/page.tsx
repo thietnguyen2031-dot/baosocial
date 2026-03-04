@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { RefreshCw, Edit, Eye, CheckCircle, XCircle, Trash2, X, Sparkles } from 'lucide-react';
+import { RefreshCw, Edit, Eye, CheckCircle, XCircle, Trash2, X, Sparkles, ImageIcon } from 'lucide-react';
 import Link from 'next/link';
 import QuotaStatus from '@/components/QuotaStatus';
 
@@ -22,6 +22,8 @@ export default function ArticleManagementPage() {
     const [showLogs, setShowLogs] = useState(false);
     const [syncStats, setSyncStats] = useState<{ total: number, aiSuccess: number, aiFail: number, mode: string } | null>(null);
     const [jobId, setJobId] = useState<string | null>(null);
+    const [migrating, setMigrating] = useState(false);
+    const [migrateLog, setMigrateLog] = useState<string[]>([]);
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -137,6 +139,33 @@ export default function ArticleManagementPage() {
         }
     };
 
+    const handleMigrateImages = async () => {
+        if (!confirm('Migrate toàn bộ ảnh bài viết cũ lên ImgBB? Quá trình này sẽ mất vài phút.')) return;
+        setMigrating(true);
+        setMigrateLog(['🔄 Bắt đầu migrate ảnh sang ImgBB...']);
+        setShowLogs(true);
+        let offset = 0;
+        const limit = 10;
+        while (true) {
+            try {
+                const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/admin/remigrate-images`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ limit, offset })
+                });
+                const d = await r.json();
+                setMigrateLog(prev => [...prev, `✅ Batch ${offset / limit + 1}: ${d.updated}/${d.processed} bài updated (skip: ${d.skipped})`]);
+                if (d.processed < limit) break; // done
+                offset += limit;
+            } catch {
+                setMigrateLog(prev => [...prev, '❌ Lỗi kết nối!']);
+                break;
+            }
+        }
+        setMigrateLog(prev => [...prev, '🎉 Migrate hoàn tất!']);
+        setMigrating(false);
+    };
+
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
     const toggleSelect = (id: number) => {
@@ -229,6 +258,14 @@ export default function ArticleManagementPage() {
                     >
                         <RefreshCw size={18} />
                         Đồng bộ tin mới
+                    </button>
+                    <button
+                        onClick={handleMigrateImages}
+                        disabled={migrating}
+                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-lg font-medium transition-colors shadow-lg shadow-emerald-500/20"
+                    >
+                        <ImageIcon size={18} />
+                        {migrating ? 'Đang migrate...' : 'Migrate Ảnh → ImgBB'}
                     </button>
                 </div>
             </div>

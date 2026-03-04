@@ -341,26 +341,32 @@ app.post("/sync-news", async (req, res) => {
         if (finalContent) {
           const $ = cheerio.load(finalContent, null, false);
           const images = $('img').toArray();
+          let imgbbSuccess = 0;
 
           for (const img of images) {
             const src = $(img).attr('src');
-            if (src) {
+            if (src && !src.includes('i.ibb.co')) {
+              log(`[Sync] 🖼️ Uploading image to ImgBB: ${src.substring(0, 60)}...`);
               const uploadResult = await uploadToImgBBDual(src);
               if (uploadResult) {
                 $(img).attr('src', uploadResult.primaryUrl);
                 $(img).attr('data-backup', uploadResult.backupUrl);
                 $(img).attr('data-original', uploadResult.originalUrl);
                 $(img).attr('onerror', "this.onerror=null; this.src=this.getAttribute('data-backup') || this.getAttribute('data-original');");
-
-                // If we haven't locked in a valid thumbnail yet, use the first successful uploaded image
                 if (!finalThumbnail || finalThumbnail === src || finalThumbnail === item.thumbnail) {
                   finalThumbnail = uploadResult.primaryUrl;
                 }
+                imgbbSuccess++;
+                log(`[Sync] ✅ ImgBB upload OK → ${uploadResult.primaryUrl.substring(0, 50)}`);
+              } else {
+                log(`[Sync] ⚠️ ImgBB upload FAILED for: ${src.substring(0, 60)} — keeping original`);
               }
             }
           }
           finalContent = $.html();
+          log(`[Sync] 🖼️ ImgBB uploads: ${imgbbSuccess}/${images.length} success`);
         }
+
 
         // Fallback thumbnail extraction from the final content if everything else failed
         if (!finalThumbnail && finalContent) {
