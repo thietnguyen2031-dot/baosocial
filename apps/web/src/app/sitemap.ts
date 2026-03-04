@@ -1,41 +1,48 @@
 import { MetadataRoute } from 'next';
 
-export const revalidate = 3600; // Update every 1 hour
+export const revalidate = 3600; // Regenerate every 1 hour
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.benthanhmedia.net';
 
-    // Fetch critical articles
-    // In production, fetch ALL slugs or top 1000
-    let articles = [];
+    let articles: any[] = [];
     try {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/news?limit=1000`);
         const data = await res.json();
         if (data.success) articles = data.data;
     } catch (e) {
-        console.error("Sitemap fetch error", e);
+        console.error("[Sitemap] Fetch error:", e);
     }
 
-    const newsUrls = articles.map((article: any) => ({
-        url: `${baseUrl}/tin/${article.slug || article.id}`,
-        lastModified: new Date(article.pubDate),
-        changeFrequency: 'daily' as const,
-        priority: 0.7,
-    }));
-
-    return [
+    // Static pages (no priority/changefreq — Google ignores them per 2025+ guidelines)
+    const staticPages: MetadataRoute.Sitemap = [
         {
             url: baseUrl,
             lastModified: new Date(),
-            changeFrequency: 'always',
-            priority: 1,
         },
         {
-            url: `${baseUrl}/login`,
+            url: `${baseUrl}/the-thao`,
             lastModified: new Date(),
-            changeFrequency: 'monthly',
-            priority: 0.5,
         },
-        ...newsUrls,
+        {
+            url: `${baseUrl}/kinh-te`,
+            lastModified: new Date(),
+        },
+        {
+            url: `${baseUrl}/the-gioi`,
+            lastModified: new Date(),
+        },
     ];
+
+    // Article pages with image sitemap entries
+    const newsUrls: MetadataRoute.Sitemap = articles.map((article: any) => ({
+        url: `${baseUrl}/tin/${article.slug || article.id}`,
+        lastModified: new Date(article.pubDate || article.publishedAt),
+        // images — helps Google Discover & image indexing
+        ...(article.thumbnail ? {
+            images: [`${baseUrl}/_next/image?url=${encodeURIComponent(article.thumbnail)}&w=1200&q=75`]
+        } : {})
+    }));
+
+    return [...staticPages, ...newsUrls];
 }
