@@ -1,34 +1,45 @@
-import FormData from "form-data";
 import { db } from "@packages/db";
 
 /**
- * Uploads an image URL to a single ImgBB account
+ * Uploads an image URL to a single ImgBB account.
+ * Uses URLSearchParams (application/x-www-form-urlencoded) which is
+ * compatible with native Node.js fetch and the ImgBB API.
  */
 async function uploadToSingleAccount(imageUrl: string, apiKey: string): Promise<string | null> {
     try {
-        const fetchRes = await fetch(imageUrl);
-        if (!fetchRes.ok) return null;
+        const fetchRes = await fetch(imageUrl, {
+            redirect: 'follow',
+            headers: { 'User-Agent': 'Mozilla/5.0 BaoSocial/1.0' }
+        });
+        if (!fetchRes.ok) {
+            console.warn(`[ImgBB] Could not fetch image (${fetchRes.status}): ${imageUrl}`);
+            return null;
+        }
 
         const buffer = Buffer.from(await fetchRes.arrayBuffer());
+        const base64 = buffer.toString('base64');
 
-        const formData = new FormData();
-        formData.append('image', buffer.toString('base64'));
+        // URLSearchParams works natively with fetch (no Content-Type boundary issues)
+        const body = new URLSearchParams();
+        body.append('image', base64);
 
-        // ImgBB API supports direct base64 upload over standard POST
         const uploadRes = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
             method: 'POST',
-            body: formData as any
+            body,
         });
 
-        const data = await uploadRes.json();
+        const data = await uploadRes.json() as any;
 
-        if (data && data.success && data.data && data.data.url) {
+        if (data?.success && data?.data?.url) {
+            console.log(`[ImgBB] ✅ Uploaded: ${data.data.url}`);
             return data.data.url;
         }
+
+        console.warn(`[ImgBB] Upload rejected by API:`, JSON.stringify(data));
         return null;
     } catch (err) {
         console.error(`[ImgBB API] Single upload failed:`, err);
-        return null; // Return null so Promise.allSettled deals with it cleanly
+        return null;
     }
 }
 
