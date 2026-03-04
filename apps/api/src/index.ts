@@ -1306,50 +1306,58 @@ app.get("/articles/by-slug/:slug", async (req, res) => {
 
     if (!article) return res.status(404).json({ error: "Article not found" });
 
-    // --- INTERAL LINK DICTIONARY SYSTEM ---
+    // --- INTERNAL LINK DICTIONARY SYSTEM ---
     if (article.contentAi) {
-      // Fetch up to 50 latest published focus keywords (excluding current article)
-      const recentKeywords = await db.query.articles.findMany({
+      // Fetch up to 50 latest published articles to build the keyword dictionary
+      // Uses focusKeyword if set, otherwise falls back to the first meaningful words in the title
+      const recentArticles = await db.query.articles.findMany({
         where: (a, { eq, and, ne, isNotNull }) => and(
           eq(a.status, "PUBLISHED"),
-          isNotNull(a.focusKeyword),
-          ne(a.id, article.id)
+          isNotNull(a.title),
+          ne(a.id, article!.id)
         ),
         orderBy: desc(articles.publishedAt),
         columns: {
           slug: true,
-          focusKeyword: true
+          focusKeyword: true,
+          title: true,
         },
         limit: 50
       });
 
-      if (recentKeywords.length > 0) {
+      // Build keyword dictionary: prefer focusKeyword, fall back to extracting from title
+      const linkDict = recentArticles
+        .map(a => {
+          const keyword = a.focusKeyword?.trim() ||
+            // Extract 2-4 most meaningful words from title (skip articles/prepositions)
+            a.title?.split(' ').filter(w => w.length > 3).slice(0, 3).join(' ');
+          return keyword ? { keyword, slug: a.slug } : null;
+        })
+        .filter((k): k is { keyword: string; slug: string } => !!k && !!k.slug);
+
+      if (linkDict.length > 0) {
         const $ = cheerio.load(article.contentAi, null, false);
 
-        // Loop through each keyword to inject links
-        recentKeywords.forEach((k) => {
-          if (!k.focusKeyword || !k.slug) return;
-
-          // Escape regex specials and create a case-insensitive word boundary match
+        linkDict.forEach(({ keyword, slug }) => {
           const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const keywordRegex = new RegExp(`\\b(${escapeRegExp(k.focusKeyword)})\\b`, 'i');
+          // For multi-word phrases, use plain match; for single words use word boundary
+          const isSingleWord = !keyword.includes(' ');
+          const pattern = isSingleWord
+            ? `\\b(${escapeRegExp(keyword)})\\b`
+            : `(${escapeRegExp(keyword)})`;
+          const keywordRegex = new RegExp(pattern, 'i');
           let found = false;
 
-          // Iterate through text nodes focusing only on paragraphs and list items to avoid breaking headers/links
           $('p, li').each((_, el) => {
-            if (found) return; // Only 1 link per keyword per article to avoid spam
-
-            // Skip if inside an existing link
-            if ($(el).parents('a').length > 0 || $(el).is('a')) return;
+            if (found) return;
+            if ($(el).parents('a').length > 0) return; // Don't nest inside existing links
 
             const html = $(el).html();
-            if (html && keywordRegex.test(html)) {
-              // Ensure we don't accidentally replace within an HTML attributes like `<img alt="keyword">`
-              // A simple approach is replacing only text nodes, but for simplicity we replace within the tag HTML assuming keywords are raw text
-              // A completely safe way is iterating text nodes, but Cheerio makes text node manipulation verbose. 
-              // We will use a regex that negative lookaheads tag closures, but since we target <p> and <li> without complex children usually, simple replace might suffice.
-              // For safety, let's use the replace callback:
-              const newHtml = html.replace(keywordRegex, `<a href="/tin/${k.slug}" title="$1" class="text-blue-600 hover:underline inline-block font-medium">$1</a>`);
+            if (html && keywordRegex.test(html) && !html.includes(`href="/tin/${slug}"`)) {
+              const newHtml = html.replace(
+                keywordRegex,
+                `<a href="/tin/${slug}" title="$1" class="text-blue-600 hover:underline font-medium">$1</a>`
+              );
               if (newHtml !== html) {
                 $(el).html(newHtml);
                 found = true;
@@ -1358,7 +1366,6 @@ app.get("/articles/by-slug/:slug", async (req, res) => {
           });
         });
 
-        // Update the response object (in memory only, doesn't save to DB)
         article.contentAi = $.html();
       }
     }
