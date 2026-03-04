@@ -36,8 +36,8 @@ import { eq, desc, count, isNull, asc, inArray, sql } from "drizzle-orm";
 // DIAGNOSTIC ROUTE TO TEST IMGBB UPLOAD
 app.get("/debug/imgbb", async (req, res) => {
   try {
-    // Use a reliable public image (picsum.photos doesn't block server-side fetch)
-    const testUrl = "https://picsum.photos/seed/baosocial/400/300";
+    // Test with a real Baoquocte image to verify hotlink bypass
+    const testUrl = req.query.url as string || "https://baoquocte.vn/stores/news_dataimages/2025/0809/img_653x490_1d1721a7979a6aeac7090bb8958d5c0e.jpg";
     const result = await uploadToImgBBDual(testUrl, true);
 
     res.json({
@@ -54,6 +54,73 @@ app.get("/debug/imgbb", async (req, res) => {
 });
 
 
+
+// BATCH IMAGE RE-MIGRATION: Re-upload old article images to ImgBB (no AI rerun needed)
+app.post("/admin/remigrate-images", async (req, res) => {
+  const { limit = 20, offset = 0 } = req.body;
+
+  try {
+    const batch = await db.select().from(articles)
+      .where(eq(articles.status, 'PUBLISHED'))
+      .limit(Number(limit))
+      .offset(Number(offset));
+
+    let processed = 0, updated = 0, skipped = 0;
+
+    for (const article of batch) {
+      processed++;
+      const content = article.contentAi;
+      if (!content) { skipped++; continue; }
+
+      // Skip if already processed (has ImgBB links or data-backup attributes)
+      if (content.includes('i.ibb.co') || content.includes('data-backup')) {
+        skipped++;
+        continue;
+      }
+
+      const $ = cheerio.load(content, null, false);
+      const images = $('img').toArray();
+      let changed = false;
+      let newThumbnail = article.thumbnail;
+
+      for (const img of images) {
+        const src = $(img).attr('src');
+        if (!src || src.includes('i.ibb.co')) continue;
+
+        const uploadResult = await uploadToImgBBDual(src);
+        if (uploadResult) {
+          $(img).attr('src', uploadResult.primaryUrl);
+          $(img).attr('data-backup', uploadResult.backupUrl);
+          $(img).attr('data-original', uploadResult.originalUrl);
+          $(img).attr('onerror', "this.onerror=null; this.src=this.getAttribute('data-backup') || this.getAttribute('data-original');");
+          // Upgrade thumbnail if it matches current src
+          if (!newThumbnail || newThumbnail === src) {
+            newThumbnail = uploadResult.primaryUrl;
+          }
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        await db.update(articles)
+          .set({ contentAi: $.html(), thumbnail: newThumbnail })
+          .where(eq(articles.id, article.id));
+        updated++;
+      }
+    }
+
+    res.json({
+      success: true,
+      processed,
+      updated,
+      skipped,
+      nextOffset: Number(offset) + Number(limit),
+      message: `Re-migrated ${updated}/${processed} articles. Run again with offset=${Number(offset) + Number(limit)} to continue.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // ADMIN STATS ENDPOINT
 app.get("/admin/stats", async (req, res) => {
