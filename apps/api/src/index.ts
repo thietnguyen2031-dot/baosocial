@@ -1328,8 +1328,6 @@ app.get("/articles/by-slug/:slug", async (req, res) => {
 
     // --- INTERNAL LINK DICTIONARY SYSTEM ---
     if (article.contentAi) {
-      // Fetch up to 50 latest published articles to build the keyword dictionary
-      // Uses focusKeyword if set, otherwise falls back to the first meaningful words in the title
       const recentArticles = await db.query.articles.findMany({
         where: (a, { eq, and, ne, isNotNull }) => and(
           eq(a.status, "PUBLISHED"),
@@ -1337,46 +1335,44 @@ app.get("/articles/by-slug/:slug", async (req, res) => {
           ne(a.id, article!.id)
         ),
         orderBy: desc(articles.publishedAt),
-        columns: {
-          slug: true,
-          focusKeyword: true,
-          title: true,
-        },
+        columns: { slug: true, focusKeyword: true, title: true },
         limit: 50
       });
 
-      // Build keyword dictionary: prefer focusKeyword, fall back to extracting from title
+      // Build keyword dictionary
+      // Vietnamese fix: don't filter by char length, take first 3-4 words of title as phrase
       const linkDict = recentArticles
         .map(a => {
+          // Prefer focusKeyword; fallback = first 4 words of title (no length filter — Vietnamese words are short)
           const keyword = a.focusKeyword?.trim() ||
-            // Extract 2-4 most meaningful words from title (skip articles/prepositions)
-            a.title?.split(' ').filter(w => w.length > 3).slice(0, 3).join(' ');
-          return keyword ? { keyword, slug: a.slug } : null;
+            a.title?.split(' ').slice(0, 4).join(' ');
+          return keyword && a.slug ? { keyword, slug: a.slug } : null;
         })
-        .filter((k): k is { keyword: string; slug: string } => !!k && !!k.slug);
+        .filter((k): k is { keyword: string; slug: string } => !!k);
 
       if (linkDict.length > 0) {
         const $ = cheerio.load(article.contentAi, null, false);
+        const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
         linkDict.forEach(({ keyword, slug }) => {
-          const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          // For multi-word phrases, use plain match; for single words use word boundary
-          const isSingleWord = !keyword.includes(' ');
-          const pattern = isSingleWord
-            ? `\\b(${escapeRegExp(keyword)})\\b`
-            : `(${escapeRegExp(keyword)})`;
+          // Vietnamese-safe boundary: match the phrase preceded/followed by space, punctuation, or string edges
+          // Do NOT use \b — it fails with Vietnamese diacritics (à, ọ, ị, etc.)
+          const pattern = `(^|[\\s,.:;!?"\u2018\u2019(ọ)])` + `(${escapeRegExp(keyword)})` + `(?=[\\s,.:;!?"\u2018\u2019)ọ]|$)`;
           const keywordRegex = new RegExp(pattern, 'i');
           let found = false;
 
           $('p, li').each((_, el) => {
             if (found) return;
-            if ($(el).parents('a').length > 0) return; // Don't nest inside existing links
+            if ($(el).parents('a').length > 0) return;
 
             const html = $(el).html();
-            if (html && keywordRegex.test(html) && !html.includes(`href="/tin/${slug}"`)) {
+            if (!html || html.includes(`href="/tin/${slug}"`)) return;
+
+            // Check if keyword phrase exists as plain text (not inside HTML tag attributes)
+            if (keywordRegex.test(html)) {
               const newHtml = html.replace(
                 keywordRegex,
-                `<a href="/tin/${slug}" title="$1" class="text-blue-600 hover:underline font-medium">$1</a>`
+                `$1<a href="/tin/${slug}" title="$2" class="text-blue-600 hover:underline font-medium">$2</a>`
               );
               if (newHtml !== html) {
                 $(el).html(newHtml);
@@ -1389,6 +1385,7 @@ app.get("/articles/by-slug/:slug", async (req, res) => {
         article.contentAi = $.html();
       }
     }
+
 
     res.json(article);
   } catch (error) {
