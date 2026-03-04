@@ -1384,15 +1384,44 @@ app.get("/articles/by-slug/:slug", async (req, res) => {
       });
 
       // Build keyword dictionary
-      // Use focusKeyword if set, otherwise first 2 TITLE WORDS (short = higher chance of appearing in other articles)
-      // Vietnamese-safe: plain string matching — no regex, no \b word boundaries
+      // Smart keyword extraction: proper nouns are most likely to cross-link across articles
+      const GENERIC_STARTS = ['Nhận định', 'Giá cà', 'Giá vàng', 'Giá heo', 'Lịch thi', 'Đêm nhạc',
+        'Lạm phát', 'Khủng hoảng', 'Giải thưởng', 'Du lịch', 'Tỷ giá', 'Lễ hội', 'Kết quả'];
+
+      const extractKeyword = (focusKeyword?: string | null, title?: string | null): string | null => {
+        if (focusKeyword?.trim()) return focusKeyword.trim();
+        if (!title) return null;
+
+        const words = title.split(/\s+/);
+
+        // Priority 1: ALL-CAPS acronyms (CAHN, HAGL, V-League, TP.HCM)
+        const acronym = words.find(w => w.length >= 2 && /^[A-Z]{2,}/.test(w));
+        if (acronym) return acronym;
+
+        // Priority 2: Latin proper nouns (Ronaldo, Chelsea, Barcelona, Al-Nassr)
+        const latinProper = words.find(w =>
+          w.length >= 4 &&
+          /^[A-Z][a-z]/.test(w) &&
+          !/^(Sau|Khi|Với|Theo|Trong|Từ|Đang|Đây|Đã|Rất|Tuy|Dù)/.test(w)
+        );
+        if (latinProper) return latinProper;
+
+        // Priority 3: Skip generic titles, use next 2 meaningful words
+        let remaining = title;
+        for (const g of GENERIC_STARTS) {
+          if (remaining.startsWith(g)) { remaining = remaining.substring(g.length).trim(); break; }
+        }
+        const fallback = remaining.split(' ').slice(0, 2).join(' ');
+        return fallback.length >= 3 ? fallback : null;
+      };
+
       const linkDict = recentArticles
         .map(a => {
-          const keyword = a.focusKeyword?.trim() ||
-            a.title?.split(' ').slice(0, 2).join(' '); // 2 words only, e.g. "Nam Định", "Hà Nội"
+          const keyword = extractKeyword(a.focusKeyword, a.title);
           return keyword && a.slug ? { keyword, slug: a.slug } : null;
         })
         .filter((k): k is { keyword: string; slug: string } => !!k);
+
 
       if (linkDict.length > 0) {
         const $ = cheerio.load(article.contentAi, null, false);
