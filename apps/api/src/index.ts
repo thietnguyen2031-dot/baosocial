@@ -36,7 +36,8 @@ import { eq, desc, count, isNull, asc, inArray, sql } from "drizzle-orm";
 // DIAGNOSTIC ROUTE TO TEST IMGBB UPLOAD
 app.get("/debug/imgbb", async (req, res) => {
   try {
-    const testUrl = "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png";
+    // Use a reliable public image (picsum.photos doesn't block server-side fetch)
+    const testUrl = "https://picsum.photos/seed/baosocial/400/300";
     const result = await uploadToImgBBDual(testUrl, true);
 
     res.json({

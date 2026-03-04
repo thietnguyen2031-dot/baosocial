@@ -116,8 +116,15 @@ pnpm dev
 Để tự động đăng bài viết lên Facebook / X ngay khi được duyệt `PUBLISHED`:
 1. Tạo một Scenario trên trang [Make.com](https://make.com) / Zapier.
 2. Chọn module nhận dữ liệu là **Webhook -> Custom Webhook**, và sao chép đoạn URL Webhook được sinh ra.
-3. Vào trang Quản trị Admin của website -> `Cài đặt hệ thống` -> Tạo 1 Key cấu hình: `social_webhook_url`, Paste URL vừa copy vào ô Value.
+3. Vào trang Quản trị Admin của website -> `Cài đặt hệ thống` -> Tab **AI & Gemini** -> Phần **"Cấu hình Webhook Tầng 4"** -> Dán URL Webhook vào ô và bấm **Lưu**.
 4. Trở lại Make.com, kết nối nối Module Webhook đó sang Module Facebook Pages hoặc Twitter (X) là nội dung của bạn sẽ tự động lên sóng.
+
+---
+
+## 🖼️ Hướng Dẫn Cấu Hình Lưu Ảnh ImgBB (Dual-Backup)
+1. Đăng ký 2 tài khoản ImgBB riêng biệt tại [imgbb.com](https://imgbb.com).
+2. Mỗi tài khoản, vào [api.imgbb.com](https://api.imgbb.com) -> bấm **Add API Key** -> copy.
+3. Vào trang Quản trị Admin -> `Cài đặt hệ thống` -> Tab **AI & Gemini** -> Phần **"Cấu hình ImgBB"** -> Nhập 2 key cách nhau bằng dấu phẩy: `key1, key2` -> bấm **Lưu**.
 
 ---
 

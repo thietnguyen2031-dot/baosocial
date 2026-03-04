@@ -1,4 +1,5 @@
 import FormData from "form-data";
+import { db } from "@packages/db";
 
 /**
  * Uploads an image URL to a single ImgBB account
@@ -31,6 +32,32 @@ async function uploadToSingleAccount(imageUrl: string, apiKey: string): Promise<
     }
 }
 
+/**
+ * Gets ImgBB API keys from DB settings first, env var as fallback.
+ */
+async function getImgBBKeys(throwError = false): Promise<string[]> {
+    // 1. Try DB first (keys saved via Admin UI)
+    try {
+        const setting = await db.query.systemSettings.findFirst({
+            where: (s, { eq }) => eq(s.key, "imgbb_api_keys")
+        });
+        if (setting?.value) {
+            const dbKeys = setting.value.split(',').map(k => k.trim()).filter(k => k.length > 0);
+            if (dbKeys.length > 0) return dbKeys;
+        }
+    } catch (e) {
+        console.warn("[ImgBB API] Could not read keys from DB, falling back to env var.");
+    }
+
+    // 2. Fallback to env var
+    const keysStr = process.env.IMGBB_API_KEYS;
+    if (!keysStr) {
+        if (throwError) throw new Error("Missing IMGBB_API_KEYS: set it in Admin Settings or environment variables.");
+        return [];
+    }
+    return keysStr.split(',').map(k => k.trim()).filter(k => k.length > 0);
+}
+
 export interface DualUploadResult {
     primaryUrl: string;
     backupUrl: string;
@@ -41,16 +68,10 @@ export interface DualUploadResult {
  * Uploads an image to 2 ImgBB accounts simultaneously.
  */
 export async function uploadToImgBBDual(imageUrl: string, throwError = false): Promise<DualUploadResult | null> {
-    const keysStr = process.env.IMGBB_API_KEYS;
-    if (!keysStr) {
-        if (throwError) throw new Error("Missing IMGBB_API_KEYS in environment");
-        return null;
-    }
-
-    const keys = keysStr.split(',').map(k => k.trim()).filter(k => k.length > 0);
+    const keys = await getImgBBKeys(throwError);
 
     if (keys.length === 0) {
-        if (throwError) throw new Error("IMGBB_API_KEYS is empty after parsing.");
+        if (throwError) throw new Error("No ImgBB API keys found in DB or environment.");
         return null;
     }
 
