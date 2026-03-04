@@ -17,7 +17,7 @@ import { initTelegramBot } from "./services/telegram-bot";
 initTelegramBot().catch(e => console.error("Failed to init Telegram Bot:", e));
 
 import { sendToWebhook } from "./services/webhook";
-import { uploadImageToDrive } from "./services/drive";
+import { uploadToImgBBDual } from "./services/imgbb";
 import * as cheerio from "cheerio";
 
 app.get("/health", (req, res) => {
@@ -33,23 +33,22 @@ app.get("/", (req, res) => {
 import { db, rssFeeds, articles } from "@packages/db";
 import { eq, desc, count, isNull, asc, inArray, sql } from "drizzle-orm";
 
-// DIAGNOSTIC ROUTE TO TEST DRIVE UPLOAD
-app.get("/debug/drive", async (req, res) => {
+// DIAGNOSTIC ROUTE TO TEST IMGBB UPLOAD
+app.get("/debug/imgbb", async (req, res) => {
   try {
     const testUrl = "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png";
-    const resultUrl = await uploadImageToDrive(testUrl, true);
+    const result = await uploadToImgBBDual(testUrl, true);
 
     res.json({
       success: true,
-      hasCredentialsEnv: !!process.env.GOOGLE_DRIVE_CREDENTIALS,
-      hasFolderEnv: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
+      hasKeysEnv: !!process.env.IMGBB_API_KEYS,
       inputUrl: testUrl,
-      resultUrl: resultUrl,
-      didUpload: resultUrl !== testUrl,
-      envPreview: process.env.GOOGLE_DRIVE_CREDENTIALS ? process.env.GOOGLE_DRIVE_CREDENTIALS.substring(0, 50) + '...' : null
+      result: result,
+      didUpload: result !== null && result.primaryUrl !== testUrl,
+      envPreview: process.env.IMGBB_API_KEYS ? process.env.IMGBB_API_KEYS.substring(0, 20) + '...' : null
     });
   } catch (err: any) {
-    res.json({ error: err.message, stack: err.stack });
+    res.json({ success: false, error: err.message, stack: err.stack });
   }
 });
 
@@ -210,7 +209,7 @@ app.post("/sync-news", async (req, res) => {
         }
         // If Telegram mode is ON, everything stays PENDING
 
-        // --- Google Drive Image Upload Processing ---
+        // --- ImgBB Dual Account Image Processing ---
         let finalThumbnail = item.thumbnail || scrapedThumbnail || null;
 
         if (finalContent) {
@@ -220,12 +219,16 @@ app.post("/sync-news", async (req, res) => {
           for (const img of images) {
             const src = $(img).attr('src');
             if (src) {
-              const newSrc = await uploadImageToDrive(src);
-              if (newSrc && newSrc !== src) {
-                $(img).attr('src', newSrc);
-                // If we haven't locked in a valid thumbnail yet, use the first successful Drive uploaded image
+              const uploadResult = await uploadToImgBBDual(src);
+              if (uploadResult) {
+                $(img).attr('src', uploadResult.primaryUrl);
+                $(img).attr('data-backup', uploadResult.backupUrl);
+                $(img).attr('data-original', uploadResult.originalUrl);
+                $(img).attr('onerror', "this.onerror=null; this.src=this.getAttribute('data-backup') || this.getAttribute('data-original');");
+
+                // If we haven't locked in a valid thumbnail yet, use the first successful uploaded image
                 if (!finalThumbnail || finalThumbnail === src || finalThumbnail === item.thumbnail) {
-                  finalThumbnail = newSrc;
+                  finalThumbnail = uploadResult.primaryUrl;
                 }
               }
             }
@@ -719,9 +722,9 @@ app.post("/ai/bulk-seo", async (req, res) => {
             job.logs.push(`🔄 Đang xử lý: ${article.title.substring(0, 40)}...`);
             const seoData = await generateSEOSuggestions(article.title, rawContent, keys, article.sourceUrl);
 
-            // --- Google Drive Image Upload Processing ---
+            // --- ImgBB Dual Account Image Processing ---
             let finalContent = seoData.rewrittenContent;
-            let finalThumbnail = article.thumbnail; // Use old thumbnail by default
+            let finalThumbnail = article.thumbnail;
 
             if (finalContent) {
               const $ = cheerio.load(finalContent, null, false);
@@ -730,11 +733,18 @@ app.post("/ai/bulk-seo", async (req, res) => {
               for (const img of images) {
                 const src = $(img).attr('src');
                 if (src) {
-                  const newSrc = await uploadImageToDrive(src);
-                  if (newSrc && newSrc !== src) {
-                    $(img).attr('src', newSrc);
-                    // Use the first successfully uploaded drive image as a fallback thumbnail
-                    finalThumbnail = newSrc;
+                  // Run Parallel Upload
+                  const uploadResult = await uploadToImgBBDual(src);
+
+                  if (uploadResult) {
+                    // Inject Dual-Backup Self-Healing DOM
+                    $(img).attr('src', uploadResult.primaryUrl);
+                    $(img).attr('data-backup', uploadResult.backupUrl);
+                    $(img).attr('data-original', uploadResult.originalUrl);
+                    $(img).attr('onerror', "this.onerror=null; this.src=this.getAttribute('data-backup') || this.getAttribute('data-original');");
+
+                    // Set article thumbnail to the primary ImgBB link
+                    finalThumbnail = uploadResult.primaryUrl;
                   }
                 }
               }

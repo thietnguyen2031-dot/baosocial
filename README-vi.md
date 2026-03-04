@@ -121,19 +121,4 @@ pnpm dev
 
 ---
 
-## 🗂️ Hướng Dẫn Cấu Hình Google Drive API (Chống mất ảnh do băng thông)
-Hệ thống sử dụng Service Account của Google Cloud để tự động tải và lưu danh sách ảnh của tin tức.
-1. Truy cập **Google Cloud Console**, tạo một dự án mới.
-2. Tại thanh tìm kiếm, gõ **Google Drive API** và bấm **Enable (Bật)**.
-3. Chuyển đến mục **APIs & Services > Credentials (Thông tin xác thực)**.
-4. Bấm **Create Credentials > Service Account**, điền tên tùy ý.
-5. Khi Service Account được tạo, chuyển sang tab **Keys > Add Key > Create New Key > JSON**. Tải file JSON này về.
-6. Mở file JSON bằng Text Editor (Notepad), copy toàn bộ nội dung và dán vào biến môi trường `GOOGLE_DRIVE_CREDENTIALS`.
-7. Truy cập vào **Google Drive cá nhân**, tạo 1 thư mục tên _"HinhAnh_BaoSocial"_.
-8. Lấy Email của Service Account (có đuôi là `@<project-id>.iam.gserviceaccount.com`), **Chia sẻ (Share)** thư mục vừa tạo cho Email này với quyền **Người chỉnh sửa (Editor)**.
-9. Đặt quyền truy cập chung của thư mục thành: **Bất kỳ ai có liên kết (Anyone with the link)**.
-10. Copy Dãy ID của thư mục đó trên thanh URL điền vào biến `GOOGLE_DRIVE_FOLDER_ID`.
-
----
-
 > LƯU Ý: Đây là tài liệu Động (Living Document). Các chức năng và luồng công nghệ sẽ tiếp tục được cập nhật và bổ sung qua thời gian.

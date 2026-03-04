@@ -116,17 +116,14 @@ To automatically share articles online immediately after publishing processing f
 
 ---
 
-## 🗂️ Configuring Google Drive Service Account (Image Storage)
-The system leverages a Google Cloud Service Account to autonomously fetch remote images and upload them securely.
-1. Head over to the **Google Cloud Console**, and bootstrap a new project.
-2. Search for the **Google Drive API** in the navigation bar and enable it.
-3. Proceed to **APIs & Services > Credentials**.
-4. Click **Create Credentials > Service Account**, and formulate a name.
-5. Create a JSON Key (`Keys > Add Key > Create New Key > JSON`) and download it.
-6. Open the JSON file in any Text Editor, copy the entire payload, and paste it into the `GOOGLE_DRIVE_CREDENTIALS` environment variable footprint.
-7. Switch to your main **Google Drive** dashboard and create a container folder (e.g., _"BaoSocial_Imgs"_).
-8. Copy the Service Account email (`@<project-id>.iam.gserviceaccount.com`), **Share** your new Google Drive folder to this email with **Editor** permissions.
-9. Critically, change the master permission of your Drive folder to **"Anyone with the link"**.
-10. Extract the Folder ID payload from your browser's URL tab and apply it to the `GOOGLE_DRIVE_FOLDER_ID` environment parameter.
+### 3. Image Optimization with ImgBB (Dual-Account Backup)
+The system utilizes **ImgBB** for independent image hosting to prevent broken links and ensure ultra-fast load times. The Dual-Account feature automatically uploads images in parallel to 2 accounts. If Account 1 runs out of bandwidth, the HTML self-healing tag on the user's browser automatically uses the link from Account 2 or falls back to the original source.
 
----
+#### Guide to obtaining ImgBB API Keys (Requires 2 accounts):
+1. Visit [ImgBB](https://imgbb.com/).
+2. Register with Email 1.
+3. Go to the [ImgBB API Page](https://api.imgbb.com/) and click **Add API Key**. Copy Key 1.
+4. Repeat steps 1-3 with Email 2 to get Key 2.
+
+Add these 2 Keys to the API Settings in the Admin Dashboard (Or the `IMGBB_API_KEYS` environment variable), separated by a comma:
+`IMGBB_API_KEYS="your_key_1, your_key_2"`
