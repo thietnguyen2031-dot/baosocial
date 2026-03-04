@@ -33,6 +33,26 @@ app.get("/", (req, res) => {
 import { db, rssFeeds, articles } from "@packages/db";
 import { eq, desc, count, isNull, asc, inArray, sql } from "drizzle-orm";
 
+// DIAGNOSTIC ROUTE TO TEST DRIVE UPLOAD
+app.get("/debug/drive", async (req, res) => {
+  try {
+    const testUrl = "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png";
+    const resultUrl = await uploadImageToDrive(testUrl, true);
+
+    res.json({
+      success: true,
+      hasCredentialsEnv: !!process.env.GOOGLE_DRIVE_CREDENTIALS,
+      hasFolderEnv: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
+      inputUrl: testUrl,
+      resultUrl: resultUrl,
+      didUpload: resultUrl !== testUrl,
+      envPreview: process.env.GOOGLE_DRIVE_CREDENTIALS ? process.env.GOOGLE_DRIVE_CREDENTIALS.substring(0, 50) + '...' : null
+    });
+  } catch (err: any) {
+    res.json({ error: err.message, stack: err.stack });
+  }
+});
+
 
 
 // ADMIN STATS ENDPOINT

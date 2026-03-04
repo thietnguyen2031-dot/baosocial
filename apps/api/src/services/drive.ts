@@ -4,11 +4,14 @@ import { Readable } from 'stream';
 // Singleton for Drive API
 let driveService: any = null;
 
-function getDriveService() {
+function getDriveService(throwError = false) {
     if (driveService) return driveService;
 
     const credentialsStr = process.env.GOOGLE_DRIVE_CREDENTIALS;
-    if (!credentialsStr) return null;
+    if (!credentialsStr) {
+        if (throwError) throw new Error("Missing GOOGLE_DRIVE_CREDENTIALS");
+        return null;
+    }
 
     try {
         const credentials = JSON.parse(credentialsStr);
@@ -19,22 +22,25 @@ function getDriveService() {
 
         driveService = google.drive({ version: 'v3', auth });
         return driveService;
-    } catch (error) {
+    } catch (error: any) {
         console.error("[Drive API] Failed to parse credentials:", error);
+        if (throwError) throw new Error("Credentials Parse Error: " + error.message);
         return null;
     }
 }
 
-export async function uploadImageToDrive(imageUrl: string): Promise<string | null> {
-    const drive = getDriveService();
+export async function uploadImageToDrive(imageUrl: string, throwError = false): Promise<string | null> {
+    const drive = getDriveService(throwError);
     if (!drive) {
         console.log("[Drive API] No credentials configured. Skipping auto-upload.");
+        if (throwError) throw new Error("Drive service not initialized (Check JSON credentials)");
         return imageUrl; // Fallback to original
     }
 
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
     if (!folderId) {
         console.warn("[Drive API] Missing GOOGLE_DRIVE_FOLDER_ID in environment.");
+        if (throwError) throw new Error("Missing GOOGLE_DRIVE_FOLDER_ID");
         return imageUrl;
     }
 
@@ -44,6 +50,7 @@ export async function uploadImageToDrive(imageUrl: string): Promise<string | nul
 
         if (!response.ok) {
             console.warn(`[Drive API] Failed to fetch image: ${response.statusText}`);
+            if (throwError) throw new Error(`HTTP Download Fetch Error: ${response.status} ${response.statusText}`);
             return imageUrl;
         }
 
@@ -78,9 +85,11 @@ export async function uploadImageToDrive(imageUrl: string): Promise<string | nul
             return `https://drive.google.com/uc?export=view&id=${fileId}`;
         }
 
+        if (throwError) throw new Error("File ID was not returned by Google Drive API.");
         return imageUrl;
-    } catch (error) {
+    } catch (error: any) {
         console.error("[Drive API] Error uploading image:", error);
+        if (throwError) throw new Error("Upload Process Error: " + error.message);
         return imageUrl; // Fallback
     }
 }
