@@ -17,6 +17,8 @@ import { initTelegramBot } from "./services/telegram-bot";
 initTelegramBot().catch(e => console.error("Failed to init Telegram Bot:", e));
 
 import { sendToWebhook } from "./services/webhook";
+import { uploadImageToDrive } from "./services/drive";
+import * as cheerio from "cheerio";
 
 app.get("/health", (req, res) => {
   res.send("OK");
@@ -184,8 +186,30 @@ app.post("/sync-news", async (req, res) => {
         }
         // If Telegram mode is ON, everything stays PENDING
 
-        // Fallback thumbnail extraction from the final content if everything else failed
+        // --- Google Drive Image Upload Processing ---
         let finalThumbnail = item.thumbnail || scrapedThumbnail || null;
+
+        if (finalContent) {
+          const $ = cheerio.load(finalContent, null, false);
+          const images = $('img').toArray();
+
+          for (const img of images) {
+            const src = $(img).attr('src');
+            if (src) {
+              const newSrc = await uploadImageToDrive(src);
+              if (newSrc && newSrc !== src) {
+                $(img).attr('src', newSrc);
+                // If we haven't locked in a valid thumbnail yet, use the first successful Drive uploaded image
+                if (!finalThumbnail || finalThumbnail === src || finalThumbnail === item.thumbnail) {
+                  finalThumbnail = newSrc;
+                }
+              }
+            }
+          }
+          finalContent = $.html();
+        }
+
+        // Fallback thumbnail extraction from the final content if everything else failed
         if (!finalThumbnail && finalContent) {
           const match = finalContent.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
           if (match) {
@@ -671,6 +695,28 @@ app.post("/ai/bulk-seo", async (req, res) => {
             job.logs.push(`🔄 Đang xử lý: ${article.title.substring(0, 40)}...`);
             const seoData = await generateSEOSuggestions(article.title, rawContent, keys, article.sourceUrl);
 
+            // --- Google Drive Image Upload Processing ---
+            let finalContent = seoData.rewrittenContent;
+            let finalThumbnail = article.thumbnail; // Use old thumbnail by default
+
+            if (finalContent) {
+              const $ = cheerio.load(finalContent, null, false);
+              const images = $('img').toArray();
+
+              for (const img of images) {
+                const src = $(img).attr('src');
+                if (src) {
+                  const newSrc = await uploadImageToDrive(src);
+                  if (newSrc && newSrc !== src) {
+                    $(img).attr('src', newSrc);
+                    // Use the first successfully uploaded drive image as a fallback thumbnail
+                    finalThumbnail = newSrc;
+                  }
+                }
+              }
+              finalContent = $.html();
+            }
+
             // Auto Publish Logic
             const newStatus = isTelegramApproval ? 'PENDING' : 'PUBLISHED';
 
@@ -679,9 +725,10 @@ app.post("/ai/bulk-seo", async (req, res) => {
                 title: seoData.suggestedTitle,
                 slug: seoData.slug,
                 summary: seoData.metaDescription,
-                contentAi: seoData.rewrittenContent,
+                contentAi: finalContent,
                 seoTitle: seoData.suggestedTitle,
                 seoDescription: seoData.metaDescription,
+                thumbnail: finalThumbnail,
                 status: newStatus
               })
               .where(eq(articles.id, article.id))
@@ -1156,6 +1203,64 @@ app.get("/articles/by-slug/:slug", async (req, res) => {
     }
 
     if (!article) return res.status(404).json({ error: "Article not found" });
+
+    // --- INTERAL LINK DICTIONARY SYSTEM ---
+    if (article.contentAi) {
+      // Fetch up to 50 latest published focus keywords (excluding current article)
+      const recentKeywords = await db.query.articles.findMany({
+        where: (a, { eq, and, ne, isNotNull }) => and(
+          eq(a.status, "PUBLISHED"),
+          isNotNull(a.focusKeyword),
+          ne(a.id, article.id)
+        ),
+        orderBy: desc(articles.publishedAt),
+        columns: {
+          slug: true,
+          focusKeyword: true
+        },
+        limit: 50
+      });
+
+      if (recentKeywords.length > 0) {
+        const $ = cheerio.load(article.contentAi, null, false);
+
+        // Loop through each keyword to inject links
+        recentKeywords.forEach((k) => {
+          if (!k.focusKeyword || !k.slug) return;
+
+          // Escape regex specials and create a case-insensitive word boundary match
+          const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const keywordRegex = new RegExp(`\\b(${escapeRegExp(k.focusKeyword)})\\b`, 'i');
+          let found = false;
+
+          // Iterate through text nodes focusing only on paragraphs and list items to avoid breaking headers/links
+          $('p, li').each((_, el) => {
+            if (found) return; // Only 1 link per keyword per article to avoid spam
+
+            // Skip if inside an existing link
+            if ($(el).parents('a').length > 0 || $(el).is('a')) return;
+
+            const html = $(el).html();
+            if (html && keywordRegex.test(html)) {
+              // Ensure we don't accidentally replace within an HTML attributes like `<img alt="keyword">`
+              // A simple approach is replacing only text nodes, but for simplicity we replace within the tag HTML assuming keywords are raw text
+              // A completely safe way is iterating text nodes, but Cheerio makes text node manipulation verbose. 
+              // We will use a regex that negative lookaheads tag closures, but since we target <p> and <li> without complex children usually, simple replace might suffice.
+              // For safety, let's use the replace callback:
+              const newHtml = html.replace(keywordRegex, `<a href="/tin/${k.slug}" title="$1" class="text-blue-600 hover:underline inline-block font-medium">$1</a>`);
+              if (newHtml !== html) {
+                $(el).html(newHtml);
+                found = true;
+              }
+            }
+          });
+        });
+
+        // Update the response object (in memory only, doesn't save to DB)
+        article.contentAi = $.html();
+      }
+    }
+
     res.json(article);
   } catch (error) {
     console.error(error);
