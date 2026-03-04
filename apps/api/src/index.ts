@@ -1340,49 +1340,57 @@ app.get("/articles/by-slug/:slug", async (req, res) => {
       });
 
       // Build keyword dictionary
-      // Vietnamese fix: don't filter by char length, take first 3-4 words of title as phrase
+      // Use focusKeyword if set, otherwise first 2 TITLE WORDS (short = higher chance of appearing in other articles)
+      // Vietnamese-safe: plain string matching — no regex, no \b word boundaries
       const linkDict = recentArticles
         .map(a => {
-          // Prefer focusKeyword; fallback = first 4 words of title (no length filter — Vietnamese words are short)
           const keyword = a.focusKeyword?.trim() ||
-            a.title?.split(' ').slice(0, 4).join(' ');
+            a.title?.split(' ').slice(0, 2).join(' '); // 2 words only, e.g. "Nam Định", "Hà Nội"
           return keyword && a.slug ? { keyword, slug: a.slug } : null;
         })
         .filter((k): k is { keyword: string; slug: string } => !!k);
 
       if (linkDict.length > 0) {
         const $ = cheerio.load(article.contentAi, null, false);
-        const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        let injectedCount = 0;
 
         linkDict.forEach(({ keyword, slug }) => {
-          // Vietnamese-safe boundary: match the phrase preceded/followed by space, punctuation, or string edges
-          // Do NOT use \b — it fails with Vietnamese diacritics (à, ọ, ị, etc.)
-          const pattern = `(^|[\\s,.:;!?"\u2018\u2019(ọ)])` + `(${escapeRegExp(keyword)})` + `(?=[\\s,.:;!?"\u2018\u2019)ọ]|$)`;
-          const keywordRegex = new RegExp(pattern, 'i');
           let found = false;
 
           $('p, li').each((_, el) => {
             if (found) return;
+            // Don't nest inside existing <a> tags
             if ($(el).parents('a').length > 0) return;
 
-            const html = $(el).html();
-            if (!html || html.includes(`href="/tin/${slug}"`)) return;
+            const html = $(el).html() || '';
+            // Skip if this link is already in the element
+            if (html.includes(`href="/tin/${slug}"`)) return;
+            // Plain string check — works perfectly with Vietnamese diacritics
+            if (!html.includes(keyword)) return;
 
-            // Check if keyword phrase exists as plain text (not inside HTML tag attributes)
-            if (keywordRegex.test(html)) {
-              const newHtml = html.replace(
-                keywordRegex,
-                `$1<a href="/tin/${slug}" title="$2" class="text-blue-600 hover:underline font-medium">$2</a>`
-              );
-              if (newHtml !== html) {
-                $(el).html(newHtml);
-                found = true;
-              }
-            }
+            // Replace FIRST occurrence only using plain string split-join
+            const idx = html.indexOf(keyword);
+            if (idx === -1) return;
+
+            // Safety: make sure the keyword isn't inside an HTML tag attribute (look for < before it)
+            const before = html.substring(0, idx);
+            const lastOpenTag = before.lastIndexOf('<');
+            const lastCloseTag = before.lastIndexOf('>');
+            if (lastOpenTag > lastCloseTag) return; // inside a tag attribute, skip
+
+            const newHtml =
+              html.substring(0, idx) +
+              `<a href="/tin/${slug}" title="${keyword}" class="text-blue-600 hover:underline font-medium">${keyword}</a>` +
+              html.substring(idx + keyword.length);
+
+            $(el).html(newHtml);
+            found = true;
+            injectedCount++;
           });
         });
 
         article.contentAi = $.html();
+        console.log(`[InternalLinker] Injected ${injectedCount} links into article ${article.id}`);
       }
     }
 
