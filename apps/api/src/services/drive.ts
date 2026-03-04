@@ -66,23 +66,40 @@ export async function uploadImageToDrive(imageUrl: string, throwError = false): 
         const fileName = `baosocial_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
         console.log(`[Drive API] ☁️ Uploading ${fileName} to Drive...`);
+        // WORKAROUND FOR FREE GMAIL: Do not use parents: [folderId] because Service Accounts linked
+        // to a free Gmail account cannot consume quota in user-owned folders.
+        // Instead, upload to the Service Account's root implicitly, then share it globally.
         const file = await drive.files.create({
             requestBody: {
                 name: fileName,
-                parents: [folderId],
+                // parents: [folderId], <- REMOVED to avoid Storage Quota errors on free accounts
             },
             media: {
                 mimeType,
                 body: stream,
             },
             fields: 'id',
-            supportsAllDrives: true,
         });
 
         const fileId = file.data.id;
 
         if (fileId) {
             console.log(`[Drive API] ✅ Uploaded successfully. ID: ${fileId}`);
+
+            // Attempt to make the file public just in case the folder didn't inherit
+            try {
+                await drive.permissions.create({
+                    fileId: fileId,
+                    requestBody: {
+                        role: 'reader',
+                        type: 'anyone',
+                    },
+                    supportsAllDrives: true,
+                });
+            } catch (permError) {
+                console.warn("[Drive API] Warning: Could not set public permission on file:", permError);
+            }
+
             return `https://drive.google.com/uc?export=view&id=${fileId}`;
         }
 
@@ -90,7 +107,12 @@ export async function uploadImageToDrive(imageUrl: string, throwError = false): 
         return imageUrl;
     } catch (error: any) {
         console.error("[Drive API] Error uploading image:", error);
-        if (throwError) throw new Error("Upload Process Error: " + error.message);
+
+        // Detailed error for diagnostic
+        if (throwError) {
+            throw new Error(`Upload Process Error: ${error.message}${error.response?.data ? ' | ' + JSON.stringify(error.response.data) : ''}`);
+        }
+
         return imageUrl; // Fallback
     }
 }
