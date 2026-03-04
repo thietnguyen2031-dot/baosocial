@@ -76,6 +76,7 @@ export async function uploadImageToDrive(imageUrl: string, throwError = false): 
                 body: stream,
             },
             fields: 'id',
+            supportsAllDrives: true,
         });
 
         const fileId = file.data.id;
