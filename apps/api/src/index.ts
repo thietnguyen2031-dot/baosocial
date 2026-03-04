@@ -468,6 +468,7 @@ app.get("/news", async (req, res) => {
         contentSnippet: a.summary,
         category: a.category,
         slug: a.slug,
+        content: a.contentAi,
         source: 'BaoSocial',
         thumbnail: a.thumbnail || ''
       }));

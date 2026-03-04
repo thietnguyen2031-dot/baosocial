@@ -29,7 +29,7 @@ export async function GET() {
     };
 
     const feed = `<?xml version="1.0" encoding="UTF-8" ?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title><![CDATA[${siteTitle}]]></title>
     <link>${baseUrl}</link>
@@ -40,6 +40,7 @@ ${articles.map((article: any) => {
         const title = cleanText(article.title);
         const desc = cleanText(article.contentSnippet || article.description);
         const category = cleanText(article.category);
+        const fullContent = article.content ? `<![CDATA[${article.content}]]>` : '';
 
         return `    <item>
       <title><![CDATA[${title}]]></title>
@@ -47,6 +48,7 @@ ${articles.map((article: any) => {
       <guid isPermaLink="true">${baseUrl}/tin/${article.slug || article.id}</guid>
       <pubDate>${new Date(article.publishedAt || article.pubDate || new Date()).toUTCString()}</pubDate>
       ${desc ? `<description><![CDATA[${desc}]]></description>` : '<description><![CDATA[]]></description>'}
+      ${fullContent ? `<content:encoded>${fullContent}</content:encoded>` : ''}
       ${category ? `<category><![CDATA[${category}]]></category>` : ''}
       ${article.thumbnail ? `<media:content url="${article.thumbnail}" medium="image"/>` : ''}
     </item>`;
