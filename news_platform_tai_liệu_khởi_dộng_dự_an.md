@@ -183,7 +183,32 @@ Mục tiêu:
 - Rich Result
 - Google Discover
 
----
+### 8.5 Chiến lược SEO 4 Tầng (Thực chiến)
+
+#### 🥇 TẦNG 1: Chọn từ khóa đúng (Quan trọng nhất)
+- **Không target từ khóa quá rộng**: Ví dụ: `chip nvidia trung quoc` (Cạnh tranh cực cao, khó lên top).
+- **Target Long-tail keyword (Từ khóa ngách/dài)**: Ví dụ: `Nvidia H20 bị cấm xuất khẩu sang Trung Quốc 2026` hoặc `Chính sách mới Mỹ siết chip AI Nvidia tại Trung Quốc`.
+- Long-tail keyword mang lại chuyển đổi tốt và cực kỳ dễ gắn lên top cho site mới.
+
+#### 🥈 TẦNG 2: Viết bài chuẩn SEO thực chiến
+Cấu trúc cho mỗi bài viết sinh ra từ AI hoặc viết tay phải thoả mãn:
+1. **Title chuẩn**: Ví dụ `Mỹ Siết Xuất Khẩu Chip Nvidia H20 Sang Trung Quốc: Tác Động Đến AI 2026` (Phải chứa cụm Keyword + Bối cảnh cụ thể).
+2. **H1 duy nhất**: Mỗi trang URL chỉ tồn tại duy nhất 1 thẻ `<h1>`.
+3. **Độ dài bài viết**: Cố gắng đạt `1000–1500 từ` (Báo lớn thường 800–2000 từ, bài ngắn 300 từ rất khó cạnh tranh).
+4. **Mục FAQ cuối bài**: Bắt buộc thêm các câu hỏi thường gặp. Ví dụ: *Chip Nvidia H20 là gì? Vì sao Mỹ cấm? Trung Quốc có giải pháp thay thế không?* (Google cực kỳ thích cấu trúc hỏi đáp FAQ Schema).
+
+#### 🥉 TẦNG 3: Tăng tốc index & crawl
+Sau khi đăng bài mới, cần thực hiện hệ thống hoặc thủ công:
+- **Tự động**: Sitemap & RSS feed phải cập nhật tức thì.
+- **Thủ công (Nếu bài quan trọng)**: Submit URL Inspection qua Google Search Console.
+- **Social Signals**: Share lên Facebook Page, X (Twitter).
+- **Internal Link**: Bắt buộc trỏ link từ 2–3 bài viết cũ (có traffic) lồng sang bài mới để bot đi theo.
+
+#### 🏆 TẦNG 4: Tăng authority (Off-page)
+News site không có độ Trust sẽ không đè nổi báo lớn, bắt buộc phải có kế hoạch build Authority:
+- Kiếm 20–50 backlink thật chất lượng.
+- Phân bổ 1–2 bài guest post trên hệ thống cùng ngành.
+- Rải link từ diễn đàn, blog, hoặc các nền tảng Web 2.0 (Ví dụ: Medium, Blogger, LinkedIn Articles).
 
 ### 8.5 Nội dung AI & SEO
 
