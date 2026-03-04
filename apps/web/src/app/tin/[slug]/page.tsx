@@ -15,7 +15,7 @@ import FeaturedGrid from "@/components/FeaturedGrid";
 // Fetch article by slug
 async function getArticleBySlug(slug: string) {
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/articles/by-slug/${slug}`, {
-        next: { revalidate: 60 } // ISR: 60 seconds
+        next: { revalidate: 10 } // ISR: revalidate every 10s to pick up internal link injections
     });
     if (!res.ok) return null;
     return res.json();

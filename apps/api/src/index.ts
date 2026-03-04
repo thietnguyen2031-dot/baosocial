@@ -54,6 +54,26 @@ app.get("/debug/imgbb", async (req, res) => {
 });
 
 
+// DEBUG INTERNAL LINKER - Test link injection for an article
+app.get("/debug/linker/:slug", async (req, res) => {
+  const { slug } = req.params;
+  try {
+    const res2 = await fetch(`http://localhost:${port}/articles/by-slug/${slug}`);
+    const article = await res2.json();
+    if (!article || !article.contentAi) {
+      return res.json({ error: "Article not found or no content" });
+    }
+    const linkCount = (article.contentAi.match(/href="\/tin\//g) || []).length;
+    return res.json({
+      title: article.title,
+      linkCount,
+      preview: article.contentAi.substring(0, 2000),
+      hasLinks: linkCount > 0
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // BATCH IMAGE RE-MIGRATION: Re-upload old article images to ImgBB (no AI rerun needed)
 app.post("/admin/remigrate-images", async (req, res) => {
