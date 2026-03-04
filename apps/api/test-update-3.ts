@@ -1,1 +1,0 @@
-﻿import { db, rssFeeds } from"@packages/db"; import { eq, sql } from"drizzle-orm"; async function run() { const res = await db.execute(sql\UPDATE rss_feeds SET crawl_minute = 15 WHERE id = 3 RETURNING crawl_minute\); console.log(res); process.exit(0); } run();

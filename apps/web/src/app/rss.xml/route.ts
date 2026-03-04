@@ -38,7 +38,7 @@ export async function GET() {
     <atom:link href="${baseUrl}/rss.xml" rel="self" type="application/rss+xml"/>
 ${articles.map((article: any) => {
         const title = cleanText(article.title);
-        const desc = cleanText(article.summary || article.description);
+        const desc = cleanText(article.contentSnippet || article.description);
         const category = cleanText(article.category);
 
         return `    <item>

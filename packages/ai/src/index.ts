@@ -253,7 +253,8 @@ export interface SEOSuggestions {
 export async function generateSEOSuggestions(
     title: string,
     content: string,
-    apiKeys: string[] = []
+    apiKeys: string[] = [],
+    sourceUrl: string | null = ""
 ): Promise<SEOSuggestions> {
     const useEnvFallback = apiKeys.length === 0;
     const keys = useEnvFallback ? [process.env.GEMINI_API_KEY || ""] : apiKeys;
@@ -274,16 +275,17 @@ export async function generateSEOSuggestions(
     YÊU CẦU:
     Trả về JSON với cấu trúc SAU (PHẢI là JSON hợp lệ, KHÔNG có markdown wrapper):
     {
-        "suggestedTitle": "Tiêu đề tối ưu SEO (50-60 ký tự, có từ khóa chính)",
+        "suggestedTitle": "Tiêu đề ngách (Long-tail keyword) tối ưu SEO (50-60 ký tự)",
         "metaDescription": "Mô tả hấp dẫn (140-160 ký tự, kêu gọi hành động)",
         "slug": "url-thân-thiện-seo-3-5-tu",
-        "rewrittenContent": "Nội dung HTML đã viết lại"
+        "rewrittenContent": "Nội dung HTML đã viết lại kèm FAQ và link nguồn"
     }
     
     QUY TẮC CHO suggestedTitle:
+    - Tự động phân tích nội dung để tạo tiêu đề chứa TỪ KHÓA NGÁCH / DÀI (Long-tail keyword) chuyên sâu, đánh vào thị hiếu ngách thay vì từ khóa rộng.
     - BẮT BUỘC DƯỚI 65 KÝ TỰ (Tuyệt đối không được dài hơn).
     - Ngắn gọn, súc tích, đi thẳng vào vấn đề chính.
-    - Chứa từ khóa chính ở đầu.
+    - Cố gắng chứa từ khóa chính ở đầu câu.
     - Thu hút click.
     - Không dùng ký tự đặc biệt.
     
@@ -303,6 +305,9 @@ export async function generateSEOSuggestions(
     - Giữ nguyên số liệu, tên riêng, và sự kiện chính.
     - Định dạng HTML thuần túy (h2, h3, p, strong, ul, li, table).
     - BẮT BUỘC GIỮ NGUYÊN toàn bộ thẻ <img src="..."> (hình ảnh) trong bài viết gốc nếu có.
+    - BẮT BUỘC chèn chuyên mục <h3>Câu hỏi thường gặp (FAQ)</h3> ở gần cuối bài. Tự trích xuất 3-5 câu Hỏi - Đáp liên quan nhất để hỗ trợ SEO FAQ Schema. Dùng thẻ <p><strong>Hỏi:</strong></p><p>Đáp:</p> hoặc tương tự.
+    - BẮT BUỘC chèn ĐOẠN MÃ HTML SAU vào DƯỚI CÙNG của bài viết (Dưới cả FAQ) nếu sourceUrl không rỗng:
+      <p><em>Nguồn tham khảo: <a href="${sourceUrl}" target="_blank" rel="nofollow">Xem bài viết gốc</a></em></p>
     - Phải chia đoạn và có cấu trúc heading rõ ràng dễ đọc.
     - Văn phong báo chí chuyên nghiệp, lôi cuốn.
     - KHÔNG có wrapper \`\`\`html.

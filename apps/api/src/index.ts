@@ -16,6 +16,8 @@ app.use(express.json());
 import { initTelegramBot } from "./services/telegram-bot";
 initTelegramBot().catch(e => console.error("Failed to init Telegram Bot:", e));
 
+import { sendToWebhook } from "./services/webhook";
+
 app.get("/health", (req, res) => {
   res.send("OK");
 });
@@ -153,7 +155,7 @@ app.post("/sync-news", async (req, res) => {
                 log(`[Sync] 🔑 Key ${idx + 1}: ...${k.slice(-8)} (length: ${k.length})`);
               });
               const { generateSEOSuggestions } = await import("@packages/ai");
-              const seoData = await generateSEOSuggestions(finalTitle, fullContent, keys);
+              const seoData = await generateSEOSuggestions(finalTitle, fullContent, keys, item.link);
 
               finalTitle = seoData.suggestedTitle;
               finalDesc = seoData.metaDescription;
@@ -192,7 +194,7 @@ app.post("/sync-news", async (req, res) => {
           }
         }
 
-        await db.insert(articles).values({
+        const [insertedArticle] = await db.insert(articles).values({
           title: finalTitle,
           slug: finalSlug,
           summary: finalDesc,
@@ -204,7 +206,12 @@ app.post("/sync-news", async (req, res) => {
           category: feed.category,
           publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
           status: articleStatus,
-        });
+        }).returning();
+
+        if (articleStatus === 'PUBLISHED' && insertedArticle) {
+          sendToWebhook(insertedArticle).catch(() => { });
+        }
+
         newCount++;
         log(`[Sync] 💾 Saved: ${finalTitle.substring(0, 50)}... [${articleStatus}]`);
       }
@@ -392,9 +399,18 @@ app.patch("/articles/:id", async (req, res) => {
     if (focusKeyword !== undefined) updateSet.focusKeyword = focusKeyword;
     if (thumbnail !== undefined) updateSet.thumbnail = thumbnail;
 
+    const oldArticle = await db.query.articles.findFirst({
+      where: (a, { eq }) => eq(a.id, Number(req.params.id))
+    });
+
     await db.update(articles)
       .set(updateSet)
       .where(eq(articles.id, Number(req.params.id)));
+
+    if (oldArticle && oldArticle.status !== 'PUBLISHED' && status === 'PUBLISHED') {
+      const publishedArticle = { ...oldArticle, ...updateSet };
+      sendToWebhook(publishedArticle).catch(() => { });
+    }
 
     res.json({ success: true });
   } catch (error) {
@@ -451,6 +467,7 @@ app.get("/news", async (req, res) => {
         pubDate: a.publishedAt,
         contentSnippet: a.summary,
         category: a.category,
+        slug: a.slug,
         source: 'BaoSocial',
         thumbnail: a.thumbnail || ''
       }));
@@ -651,12 +668,12 @@ app.post("/ai/bulk-seo", async (req, res) => {
 
           try {
             job.logs.push(`🔄 Đang xử lý: ${article.title.substring(0, 40)}...`);
-            const seoData = await generateSEOSuggestions(article.title, rawContent, keys);
+            const seoData = await generateSEOSuggestions(article.title, rawContent, keys, article.sourceUrl);
 
             // Auto Publish Logic
             const newStatus = isTelegramApproval ? 'PENDING' : 'PUBLISHED';
 
-            await db.update(articles)
+            const [updatedArticle] = await db.update(articles)
               .set({
                 title: seoData.suggestedTitle,
                 slug: seoData.slug,
@@ -666,7 +683,12 @@ app.post("/ai/bulk-seo", async (req, res) => {
                 seoDescription: seoData.metaDescription,
                 status: newStatus
               })
-              .where(eq(articles.id, article.id));
+              .where(eq(articles.id, article.id))
+              .returning();
+
+            if (newStatus === 'PUBLISHED' && updatedArticle) {
+              sendToWebhook(updatedArticle).catch(() => { });
+            }
 
             job.logs.push(`✅ Thành công: ${seoData.suggestedTitle.substring(0, 40)}...`);
             job.success++;
