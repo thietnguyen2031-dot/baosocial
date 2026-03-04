@@ -34,14 +34,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         },
     ];
 
-    // Article pages with image sitemap entries
+    // Article pages — minimal, clean format (loc + lastmod only per 2026 guidelines)
     const newsUrls: MetadataRoute.Sitemap = articles.map((article: any) => ({
         url: `${baseUrl}/tin/${article.slug || article.id}`,
         lastModified: new Date(article.pubDate || article.publishedAt),
-        // images — helps Google Discover & image indexing
-        ...(article.thumbnail ? {
-            images: [`${baseUrl}/_next/image?url=${encodeURIComponent(article.thumbnail)}&w=1200&q=75`]
-        } : {})
     }));
 
     return [...staticPages, ...newsUrls];
