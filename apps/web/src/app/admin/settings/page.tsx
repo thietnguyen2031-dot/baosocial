@@ -13,6 +13,8 @@ export default function SettingsPage() {
     const [footerText, setFooterText] = useState("");
     const [footerLinks, setFooterLinks] = useState("");
     const [apiKeys, setApiKeys] = useState("");
+    const [imgbbKeys, setImgbbKeys] = useState("");
+    const [webhookUrl, setWebhookUrl] = useState("");
     const [telegramConfig, setTelegramConfig] = useState("");
     const [telegramApproval, setTelegramApproval] = useState(false);
     const [autoCrawlInterval, setAutoCrawlInterval] = useState("30");
@@ -27,6 +29,8 @@ export default function SettingsPage() {
                 setFooterText(map("footer_text"));
                 setFooterLinks(map("footer_links"));
                 setApiKeys(map("gemini_api_keys"));
+                setImgbbKeys(map("imgbb_api_keys"));
+                setWebhookUrl(map("social_webhook_url"));
                 setTelegramConfig(map("telegram_config"));
                 setTelegramApproval(map("telegram_approval_enabled") === "true");
                 setAutoCrawlInterval(map("auto_crawl_interval_minutes") || "30");
@@ -201,12 +205,32 @@ export default function SettingsPage() {
                     <div className="space-y-6">
                         <h2 className="text-lg font-bold mb-4">Cấu hình AI (Gemini)</h2>
                         <SettingInput
-                            label="Danh sách API Keys (Mỗi key một dòng)"
+                            label="Gemini API Keys (Mỗi key một dòng)"
                             value={apiKeys}
                             onChange={(v) => handleSave("gemini_api_keys", v, "Gemini Keys")}
                             isJson={true}
                         />
-                        <p className="text-xs text-slate-500">Hệ thống sẽ tự động xoay vòng keys.</p>
+                        <p className="text-xs text-slate-500 mb-6">Hệ thống sẽ tự động xoay vòng keys khi bị giới hạn Quota.</p>
+
+                        <div className="pt-4 border-t border-slate-100">
+                            <h3 className="text-md font-bold mb-4">Cấu hình ImgBB (Lưu trữ ảnh vệ tinh)</h3>
+                            <SettingInput
+                                label="ImgBB API Keys (Cách nhau bởi dấu phẩy)"
+                                value={imgbbKeys}
+                                onChange={(v) => handleSave("imgbb_api_keys", v, "ImgBB API Keys")}
+                            />
+                            <p className="text-xs text-slate-500 mb-6">VD: 123abcxyz, 789qweasd. Hệ thống sẽ tự động tải song song 2 ảnh lên mỗi tài khoản làm Link dự phòng (Self-Healing Backup).</p>
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100">
+                            <h3 className="text-md font-bold mb-4">Cấu hình Webhook Tầng 4 (Auto Social Share)</h3>
+                            <SettingInput
+                                label="URL Webhook (Make.com, Zapier, n8n...)"
+                                value={webhookUrl}
+                                onChange={(v) => handleSave("social_webhook_url", v, "Social Share Webhook URL")}
+                            />
+                            <p className="text-xs text-slate-500 mb-2">Hệ thống sẽ gửi cục dữ liệu JSON tới đường dẫn này mỗi khi có bài mới chuyển sang PUBLISHED.</p>
+                        </div>
                     </div>
                 )}
             </div>
