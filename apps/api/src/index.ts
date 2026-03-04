@@ -24,6 +24,10 @@ app.get("/health", (req, res) => {
   res.send("OK");
 });
 
+app.get("/", (req, res) => {
+  res.send("Backend is running (Admin Routes & Socket.io Available)!");
+});
+
 
 
 import { db, rssFeeds, articles } from "@packages/db";
